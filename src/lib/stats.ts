@@ -10,6 +10,7 @@ export type Attempt = {
   tableSize: number | null;
   stackBb: number | null;
   position: string;
+  shoverPosition: string | null;
   handCode: string;
   userAction: string;
   correctAction: string;
@@ -22,6 +23,7 @@ type Row = {
   table_size: number | null;
   stack_bb: number | string | null;
   position: string;
+  shover_position: string | null;
   hand_code: string;
   user_action: string;
   correct_action: string;
@@ -38,6 +40,7 @@ function toAttempt(r: Row): Attempt {
     tableSize: r.table_size,
     stackBb: num(r.stack_bb),
     position: r.position,
+    shoverPosition: r.shover_position,
     handCode: r.hand_code,
     userAction: r.user_action,
     correctAction: r.correct_action,
@@ -55,7 +58,7 @@ export async function fetchAttempts(userId: string): Promise<Attempt[] | null> {
   const { data, error } = await supabase
     .from("training_attempts")
     .select(
-      "mode, table_size, stack_bb, position, hand_code, user_action, correct_action, ev_loss_bb, created_at",
+      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, ev_loss_bb, created_at",
     )
     .eq("user_id", userId)
     .not("ev_loss_bb", "is", null)

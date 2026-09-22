@@ -24,10 +24,12 @@ export function spotLabel(a: {
   tableSize: number | null;
   stackBb: number | null;
   position: string;
+  shoverPosition?: string | null;
 }): string {
   const parts: string[] = [];
   if (a.tableSize !== null) parts.push(`${a.tableSize}인`);
-  parts.push(a.position);
+  // 올인 대응은 누가 올인했는지까지 있어야 어떤 스팟인지 알 수 있다.
+  parts.push(a.shoverPosition ? `${a.shoverPosition} 올인 → ${a.position}` : a.position);
   if (a.stackBb !== null) parts.push(`${a.stackBb}bb`);
   return parts.join(" · ");
 }

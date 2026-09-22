@@ -1,11 +1,12 @@
 import pushfoldData from "@/data/pushfold.json";
-import { getActionFrequency, type Position } from "./poker";
+import { getActionFrequency, seatNames, type Position } from "./poker";
+import { callEv, findCallSpot } from "./callspots";
 
 // 학습 카테고리는 "무엇을 배우나"이고, 인원·스택은 "어떤 조건에서"다.
 // 둘은 별개 축이라, 조합이 늘어나도 카테고리는 늘지 않는다.
-export type ModeId = "pushfold" | "rfi" | "vsopen" | "postflop" | "icm";
+export type ModeId = "pushfold" | "vsshove" | "rfi" | "vsopen" | "postflop" | "icm";
 
-export type ActionId = "shove" | "open" | "fold";
+export type ActionId = "shove" | "call" | "open" | "fold";
 
 export type ModeInfo = {
   id: ModeId;
@@ -21,6 +22,12 @@ export const MODES: ModeInfo[] = [
     id: "pushfold",
     title: "숏스택 올인 판단",
     summary: "블라인드가 올라 스택이 얕아졌을 때, 올인할지 접을지 고릅니다.",
+    available: true,
+  },
+  {
+    id: "vsshove",
+    title: "올인 대응",
+    summary: "앞에서 올인이 들어왔을 때, 콜할지 접을지 고릅니다.",
     available: true,
   },
   {
@@ -118,11 +125,14 @@ export type Situation = {
   /** BB 앤티. 화면의 팟·스택 표시가 솔버가 푼 게임과 같아야 한다. */
   anteBb: number;
   position: string;
+  /** 올인 대응에서 먼저 올인한 자리. 다른 모드는 null. */
+  shoverPosition: string | null;
   actions: ActionId[];
 };
 
 export const ACTION_LABEL: Record<ActionId, string> = {
   shove: "올인",
+  call: "콜",
   open: "오픈",
   fold: "폴드",
 };
@@ -140,7 +150,25 @@ export function randomSituation(scenario: Scenario): Situation {
       stackBb,
       anteBb: PUSHFOLD.anteBb,
       position: pick(positions),
+      shoverPosition: null,
       actions: ["fold", "shove"],
+    };
+  }
+
+  if (scenario.mode === "vsshove") {
+    const stackBb = scenario.stackBb ?? pick(PUSHFOLD_STACKS);
+    // 올인한 사람과 히어로 쌍을 고른다. 올인은 BB 앞자리까지만 가능하고,
+    // 히어로는 그 뒤에 앉아 있어야 한다. 자리 이름은 솔버와 같은 규칙을 쓴다.
+    const names = seatNames(scenario.tableSize);
+    const shoverIdx = Math.floor(Math.random() * (names.length - 2));
+    const callerIdx = shoverIdx + 1 + Math.floor(Math.random() * (names.length - 1 - shoverIdx));
+    return {
+      tableSize: scenario.tableSize,
+      stackBb,
+      anteBb: PUSHFOLD.anteBb,
+      position: names[callerIdx],
+      shoverPosition: names[shoverIdx],
+      actions: ["fold", "call"],
     };
   }
   // rfi는 아직 비활성이지만 구조는 같은 모양으로 유지한다.
@@ -150,6 +178,7 @@ export function randomSituation(scenario: Scenario): Situation {
     stackBb: scenario.stackBb ?? 100,
     anteBb: 0,
     position: pick(pushfoldPositions(scenario.tableSize)),
+    shoverPosition: null,
     actions: ["fold", "open"],
   };
 }
@@ -167,6 +196,18 @@ export function solutionFor(
     const shove = Math.round((spot?.shove[handCode] ?? 0) * 100);
     return { shove, fold: 100 - shove };
   }
+  if (mode === "vsshove") {
+    const spot = situation.shoverPosition
+      ? findCallSpot(
+          situation.tableSize,
+          situation.stackBb,
+          situation.shoverPosition,
+          situation.position,
+        )
+      : undefined;
+    const call = Math.round((spot?.call[handCode] ?? 0) * 100);
+    return { call, fold: 100 - call };
+  }
   if (mode === "rfi") {
     const freq = getActionFrequency(situation.position as Position, handCode);
     return { open: freq.open, fold: freq.fold };
@@ -181,6 +222,18 @@ export function solutionFor(
  * (해설 패널이 "폴드 0 EV / 올인 -0.38 EV"처럼 나란히 보여주기 위한 값).
  * 아직 계산된 데이터가 없는 모드는 null.
  */
+/** 올인 대응 스팟에서 콜의 EV(bb). 데이터가 아직 안 불러와졌으면 null. */
+function callSpotEv(situation: Situation, handCode: string): number | null {
+  if (!situation.shoverPosition) return null;
+  const spot = findCallSpot(
+    situation.tableSize,
+    situation.stackBb,
+    situation.shoverPosition,
+    situation.position,
+  );
+  return spot ? callEv(spot, handCode) : null;
+}
+
 function shoveEv(situation: Situation, handCode: string): number | null {
   const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
   const i = HAND_INDEX.get(handCode);
@@ -194,6 +247,10 @@ export function actionEvFor(
   situation: Situation,
   handCode: string,
 ): Partial<Record<ActionId, number>> | null {
+  if (mode === "vsshove") {
+    const ev = callSpotEv(situation, handCode);
+    return ev === null ? null : { fold: 0, call: ev };
+  }
   if (mode !== "pushfold") return null;
   const ev = shoveEv(situation, handCode);
   if (ev === null) return null;
@@ -211,6 +268,13 @@ export function evLossFor(
   handCode: string,
   action: ActionId,
 ): number | null {
+  if (mode === "vsshove") {
+    const ev = callSpotEv(situation, handCode);
+    if (ev === null) return null;
+    if (action === "call") return ev >= 0 ? 0 : Number((-ev).toFixed(4));
+    if (action === "fold") return ev <= 0 ? 0 : Number(ev.toFixed(4));
+    return null;
+  }
   if (mode !== "pushfold") return null;
   const ev = shoveEv(situation, handCode);
   if (ev === null) return null;
@@ -221,6 +285,9 @@ export function evLossFor(
 
 /** 이 스팟의 계산 오차(bb). 데이터 신뢰도를 사용자에게 보여주기 위한 값이다. */
 export function exploitabilityFor(situation: Situation): number | null {
+  // 올인 대응 스팟은 자기 오차를 따로 담지 않는다. 히어로 자리로 올인 스팟을
+  // 찾으면 전혀 다른 스팟의 숫자를 보여주게 되므로 그냥 비운다.
+  if (situation.shoverPosition) return null;
   const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
   return spot?.exploitabilityBb ?? null;
 }

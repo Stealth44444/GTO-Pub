@@ -12,17 +12,40 @@ import {
 } from "@/lib/poker";
 import Card from "./Card";
 
+// 낸 금액이 클수록 칩을 높이 쌓는다. 숫자를 읽기 전에 크기가 먼저 보이게 하려는 것.
+function ChipStack({ amount }: { amount: number }) {
+  const tiers = amount < 1 ? 1 : amount < 3 ? 2 : amount < 10 ? 3 : 4;
+  return (
+    <span
+      className="relative shrink-0"
+      style={{ width: 11, height: 5 + (tiers - 1) * 3 }}
+      aria-hidden
+    >
+      {Array.from({ length: tiers }, (_, i) => (
+        <span
+          key={i}
+          className="absolute left-0 rounded-full border border-sky-200/60 bg-sky-400"
+          style={{ bottom: i * 3, width: 11, height: 5 }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export default function PokerTable({
   tableSize,
   heroPosition,
   stackBb,
   anteBb,
+  shoverPosition,
   hand,
 }: {
   tableSize: number;
   heroPosition: string;
   stackBb: number;
   anteBb: number;
+  /** 히어로 앞에서 이미 올인한 자리. 없으면 null. */
+  shoverPosition: string | null;
   hand: HandInfo;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -40,6 +63,12 @@ export default function PokerTable({
     observer.observe(box);
     return () => observer.disconnect();
   }, []);
+
+  // 누가 이미 올인했다면 그 스택이 통째로 팟에 들어가 있다. 이미 낸 블라인드는
+  // 그 스택에 포함돼 있으므로 중복해서 더하지 않는다.
+  const potBb = shoverPosition
+    ? preflopPot(anteBb) + stackBb - postedBlind(tableSize, shoverPosition, anteBb)
+    : preflopPot(anteBb);
 
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
   const seats = useMemo(
@@ -65,13 +94,15 @@ export default function PokerTable({
 
         <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
-          POT {preflopPot(anteBb)}bb
+          POT {potBb}bb
         </div>
 
         {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
-          const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
-          const posted = postedBlind(tableSize, seat, anteBb);
+          const isShover = seat === shoverPosition;
+          // 올인한 사람은 히어로보다 앞이지만 폴드가 아니다.
+          const folded = !isHero && !isShover && isFoldedBeforeHero(tableSize, seat, heroPosition);
+          const posted = isShover ? stackBb : postedBlind(tableSize, seat, anteBb);
           const seatStack = stackBb - posted;
           // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
           // 향하는 방향으로 밀어내면 위아래 좌석도 옆이 아니라 앞에 놓인다.
@@ -81,8 +112,8 @@ export default function PokerTable({
           const towardPotY = TABLE_FELT.top + TABLE_FELT.height / 2 - parseFloat(top);
           const reach = Math.hypot(towardPotX, towardPotY) || 1;
           // 좌석 원 반지름이 28~32px이므로 그보다 넉넉히 떨어뜨려 붙지 않게 한다.
-          const chipX = (towardPotX / reach) * 48;
-          const chipY = (towardPotY / reach) * 48;
+          const chipX = (towardPotX / reach) * 62;
+          const chipY = (towardPotY / reach) * 62;
           return (
             <div
               key={seat}
@@ -96,7 +127,7 @@ export default function PokerTable({
                     <Card rank={hand.high} suit={highSuit} />
                     <Card rank={hand.low} suit={lowSuit} />
                   </div>
-                ) : !folded ? (
+                ) : !folded || isShover ? (
                   <div className="flex gap-0.5">
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
@@ -113,8 +144,8 @@ export default function PokerTable({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
-                  {posted}
+                  <ChipStack amount={posted} />
+                  {posted}bb
                 </span>
               )}
 
@@ -135,7 +166,7 @@ export default function PokerTable({
               >
                 <span className="text-[11px] font-bold leading-tight sm:text-xs">{seat}</span>
                 <span className="text-[10px] font-bold leading-tight tabular-nums">
-                  {folded ? "폴드" : seatStack}
+                  {folded ? "폴드" : isShover ? "올인" : seatStack}
                 </span>
               </div>
             </div>

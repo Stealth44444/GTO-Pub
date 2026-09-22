@@ -23,6 +23,16 @@ const MODE_ICON: Record<ModeId, { tint: string; path: React.ReactNode }> = {
       </>
     ),
   },
+  // 올인 대응 = 남의 올인이 나에게 들어온다
+  vsshove: {
+    tint: "bg-[#14b8a6]",
+    path: (
+      <>
+        <circle cx="16" cy="12" r="5.5" />
+        <path d="M2.5 12h6.5M6 8.5 2.5 12 6 15.5" />
+      </>
+    ),
+  },
   // 오프닝 = 레인지 표(13×13 매트릭스)를 고르는 일
   rfi: {
     tint: "bg-[#3b82f6]",
@@ -194,12 +204,12 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                 </button>
 
                 {/* 조건 설정은 그 조건을 쓰는 카테고리 안에 둔다.
-                    인원·스택 축은 푸시/폴드 데이터에서 나온 값이라 이 모드에만 해당한다.
+                    인원·스택 축은 푸시/폴드 풀이에서 나온 값이라 올인·올인 대응이 함께 쓴다.
                     다른 카테고리가 열리면 각자의 축을 같은 자리에 붙인다.
 
                     grid-rows 0fr↔1fr은 높이를 모르는 내용도 펼침/접힘을 전환할 수 있게 해준다.
                     조건부 마운트로는 전환 시작 상태가 없어 애니메이션이 걸리지 않는다. */}
-                {info.id === "pushfold" && (
+                {(info.id === "pushfold" || info.id === "vsshove") && (
                   <div
                     aria-hidden={!expanded}
                     className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${

@@ -22,9 +22,12 @@ create table if not exists training_attempts (
   stack_bb numeric(7, 2),
   ante_bb numeric(5, 2),
   position text not null,
+  -- 올인 대응에서 먼저 올인한 자리. 올인한 자리에 따라 상대 레인지가 달라져
+  -- 정답도 달라지므로, 이게 없으면 행을 해석할 수 없다.
+  shover_position text,
   hand_code text not null,
-  user_action text not null check (user_action in ('shove', 'open', 'fold')),
-  correct_action text not null check (correct_action in ('shove', 'open', 'fold')),
+  user_action text not null check (user_action in ('shove', 'call', 'open', 'fold')),
+  correct_action text not null check (correct_action in ('shove', 'call', 'open', 'fold')),
   is_correct boolean not null,
   selected_frequency numeric(5, 2),
   ev_loss_bb numeric(8, 4),
@@ -44,15 +47,16 @@ alter table training_attempts add column if not exists mode text not null defaul
 alter table training_attempts add column if not exists table_size smallint;
 alter table training_attempts add column if not exists stack_bb numeric(7, 2);
 alter table training_attempts add column if not exists ante_bb numeric(5, 2);
+alter table training_attempts add column if not exists shover_position text;
 
 -- 올인을 'open'으로 적던 제약을 푼다. 푸시/폴드의 올인과 딥스택 오픈레이즈는
 -- 다른 액션인데 같은 값으로 뭉개져 있었다.
 alter table training_attempts drop constraint if exists training_attempts_user_action_check;
 alter table training_attempts add constraint training_attempts_user_action_check
-  check (user_action in ('shove', 'open', 'fold'));
+  check (user_action in ('shove', 'call', 'open', 'fold'));
 alter table training_attempts drop constraint if exists training_attempts_correct_action_check;
 alter table training_attempts add constraint training_attempts_correct_action_check
-  check (correct_action in ('shove', 'open', 'fold'));
+  check (correct_action in ('shove', 'call', 'open', 'fold'));
 
 -- 솔버 또는 검증된 외부 데이터에서 가져온 학습 기준.
 -- 한 행은 하나의 스팟/핸드에 대한 액션 빈도와 EV 정보를 나타낸다.

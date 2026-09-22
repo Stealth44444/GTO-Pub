@@ -5,7 +5,12 @@ import GradeIcon from "./GradeIcon";
 import { PanelMessage, PanelScroll, spotLabel } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
 
-const ACTION_TEXT: Record<string, string> = { shove: "올인", fold: "폴드", open: "오픈" };
+const ACTION_TEXT: Record<string, string> = {
+  shove: "올인",
+  call: "콜",
+  fold: "폴드",
+  open: "오픈",
+};
 
 function timeLabel(iso: string): string {
   const then = new Date(iso).getTime();

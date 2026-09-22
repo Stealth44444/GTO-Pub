@@ -23,6 +23,7 @@ import {
   type Grade,
 } from "@/lib/grading";
 import GradeIcon from "./GradeIcon";
+import { callDataReady, loadCallData } from "@/lib/callspots";
 import { ensureGuestUser, logAttempt } from "@/lib/attempts";
 import { getGuestId } from "@/lib/guest";
 import PokerTable from "./PokerTable";
@@ -61,11 +62,26 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [stats, setStats] = useState({ attempts: 0, correct: 0, streak: 0 });
   const [guestId] = useState<string>(() => getGuestId());
+  // 올인 대응 데이터는 번들에 없고 이 화면에 들어올 때 받아온다.
+  const [dataReady, setDataReady] = useState(
+    () => scenario.mode !== "vsshove" || callDataReady(),
+  );
   const historyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void ensureGuestUser(guestId);
   }, [guestId]);
+
+  useEffect(() => {
+    if (dataReady) return;
+    let alive = true;
+    void loadCallData().then(() => {
+      if (alive) setDataReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [dataReady]);
 
   const advance = useCallback(() => {
     setFeedback(null);
@@ -120,6 +136,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
         stackBb: round.situation.stackBb,
         anteBb: round.situation.anteBb,
         position: round.situation.position,
+        shoverPosition: round.situation.shoverPosition,
         handCode: round.hand.code,
         userAction: action,
         correctAction: best,
@@ -135,8 +152,16 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
   }, [round]);
 
   const { situation, hand } = round;
-  const accuracy = stats.attempts === 0 ? 0 : Math.round((stats.correct / stats.attempts) * 100);
   const exploitability = exploitabilityFor(situation);
+  const accuracy = stats.attempts === 0 ? 0 : Math.round((stats.correct / stats.attempts) * 100);
+
+  if (!dataReady) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <span className="text-[var(--gw-text-muted)]">레인지 데이터를 받는 중...</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -175,6 +200,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
             heroPosition={situation.position}
             stackBb={situation.stackBb}
             anteBb={situation.anteBb}
+            shoverPosition={situation.shoverPosition}
             hand={hand}
           />
         </div>
@@ -195,7 +221,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
             }`}
           >
             {ACTION_LABEL[action]}
-            {action === "shove" && (
+            {(action === "shove" || action === "call") && (
               <span className="ml-1 text-xs font-normal opacity-80">{situation.stackBb}bb</span>
             )}
           </button>

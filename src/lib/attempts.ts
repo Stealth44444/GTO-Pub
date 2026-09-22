@@ -22,6 +22,8 @@ export async function logAttempt(params: {
   anteBb: number;
   // 자리 이름은 인원에 따라 달라진다 (6인은 UTG/HJ/…, 9인은 UTG1/UTG2/LJ 포함).
   position: string;
+  /** 올인 대응에서 먼저 올인한 자리. 상대 레인지가 여기서 갈린다. */
+  shoverPosition?: string | null;
   handCode: string;
   userAction: Action;
   correctAction: Action;
@@ -36,6 +38,7 @@ export async function logAttempt(params: {
     stack_bb: params.stackBb,
     ante_bb: params.anteBb,
     position: params.position,
+    shover_position: params.shoverPosition ?? null,
     hand_code: params.handCode,
     user_action: params.userAction,
     correct_action: params.correctAction,
