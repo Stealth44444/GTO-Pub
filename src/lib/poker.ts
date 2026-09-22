@@ -1,13 +1,56 @@
-export type Position = "UTG" | "MP" | "CO" | "BTN" | "SB";
+export type Position = "UTG" | "HJ" | "CO" | "BTN" | "SB";
 
-export const POSITIONS: Position[] = ["UTG", "MP", "CO", "BTN", "SB"];
+export const POSITIONS: Position[] = ["UTG", "HJ", "CO", "BTN", "SB"];
 
 export const POSITION_LABEL: Record<Position, string> = {
   UTG: "UTG (얼리 포지션)",
-  MP: "MP (미들 포지션)",
+  HJ: "HJ (하이잭)",
   CO: "CO (컷오프)",
   BTN: "BTN (버튼)",
   SB: "SB (스몰 블라인드)",
+};
+
+// 6-max 테이블 시각화용 — BB는 학습 대상 포지션은 아니지만 테이블에는 항상 표시됨.
+export type Seat = Position | "BB";
+
+export const SEATS: Seat[] = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
+
+export const SEAT_LABEL: Record<Seat, string> = {
+  ...POSITION_LABEL,
+  BB: "BB (빅 블라인드)",
+};
+
+// 오벌 테이블 위 좌석 좌표 (컨테이너 기준 %, translate(-50%,-50%)로 중심 정렬)
+export const SEAT_LAYOUT: Record<Seat, { top: string; left: string }> = {
+  CO: { top: "4%", left: "50%" },
+  HJ: { top: "22%", left: "15%" },
+  BTN: { top: "22%", left: "85%" },
+  UTG: { top: "64%", left: "12%" },
+  SB: { top: "64%", left: "88%" },
+  BB: { top: "84%", left: "50%" },
+};
+
+const STACK_BASE = 200;
+
+// 블라인드 포스트 반영한 프리플랍 시작 스택 (표시용)
+export const SEAT_STACK: Record<Seat, number> = {
+  UTG: STACK_BASE,
+  HJ: STACK_BASE,
+  CO: STACK_BASE,
+  BTN: STACK_BASE,
+  SB: STACK_BASE - 0.5,
+  BB: STACK_BASE - 1,
+};
+
+export const PREFLOP_POT = 1.5; // SB(0.5) + BB(1)
+
+// 오픈 사이징 표시용 (그레이딩에는 사용되지 않는 참고용 수치)
+export const OPEN_SIZE: Record<Position, number> = {
+  UTG: 2.5,
+  HJ: 2.3,
+  CO: 2.2,
+  BTN: 2.2,
+  SB: 3,
 };
 
 const RANKS = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"] as const;
@@ -69,7 +112,7 @@ const TOTAL_COMBOS = ALL_HANDS.reduce((sum, h) => sum + h.combos, 0); // 1326
 // 단순화된 6-max 오픈레인지 목표 비율. 추후 검증된 솔버 데이터로 교체 예정 (session-brief.md 참고).
 const OPEN_PCT: Record<Position, number> = {
   UTG: 0.15,
-  MP: 0.18,
+  HJ: 0.18,
   CO: 0.27,
   SB: 0.35,
   BTN: 0.45,

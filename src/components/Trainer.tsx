@@ -6,12 +6,14 @@ import {
   randomHand,
   randomPosition,
   POSITION_LABEL,
+  OPEN_SIZE,
   type Action,
   type HandInfo,
   type Position,
 } from "@/lib/poker";
 import { ensureGuestUser, logAttempt } from "@/lib/attempts";
 import { getGuestId } from "@/lib/guest";
+import PokerTable from "./PokerTable";
 
 type Round = {
   position: Position;
@@ -20,21 +22,6 @@ type Round = {
 
 function nextRound(): Round {
   return { position: randomPosition(), hand: randomHand() };
-}
-
-const SUIT_INFO = {
-  s: { symbol: "♠", color: "text-slate-900" },
-  h: { symbol: "♥", color: "text-red-600" },
-} as const;
-
-function Card({ rank, suit }: { rank: string; suit: "s" | "h" }) {
-  const info = SUIT_INFO[suit];
-  return (
-    <div className="flex h-28 w-20 flex-col items-center justify-center rounded-xl bg-white shadow-lg shadow-black/30 sm:h-36 sm:w-24">
-      <span className={`text-3xl font-bold sm:text-4xl ${info.color}`}>{rank}</span>
-      <span className={`text-2xl sm:text-3xl ${info.color}`}>{info.symbol}</span>
-    </div>
-  );
 }
 
 export default function Trainer() {
@@ -87,24 +74,25 @@ export default function Trainer() {
       }}
       onClick={feedback ? advance : undefined}
     >
-      <div className="flex items-center justify-between px-4 pt-4 text-sm text-slate-400">
-        <span className="rounded-full bg-slate-800 px-3 py-1 font-medium text-slate-200">
-          {POSITION_LABEL[round.position]}
-        </span>
-        <div className="flex gap-3 tabular-nums">
-          <span>정확도 {accuracy}%</span>
-          <span>연속 {stats.streak}</span>
+      <div className="flex items-start justify-between gap-2 px-3 pt-3">
+        <div className="flex items-center gap-2 text-[11px] tabular-nums text-slate-400">
+          <span className="rounded-full bg-slate-800 px-2.5 py-1 font-medium text-slate-200">
+            정확도 {accuracy}%
+          </span>
+          <span className="rounded-full bg-slate-800 px-2.5 py-1 font-medium text-slate-200">
+            연속 {stats.streak}
+          </span>
+        </div>
+        <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-1.5 text-right">
+          <div className="text-xs font-bold leading-tight text-emerald-300">
+            {POSITION_LABEL[round.position]}
+          </div>
+          <div className="text-[10px] leading-tight text-emerald-400/80">행동을 선택해 주세요</div>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
-        <div className="flex gap-3">
-          <Card rank={round.hand.high} suit="s" />
-          <Card rank={round.hand.low} suit={round.hand.suited ? "s" : "h"} />
-        </div>
-        <p className="text-sm text-slate-400">
-          {round.hand.pair ? "포켓 페어" : round.hand.suited ? "수티드" : "오프수트"}
-        </p>
+      <div className="flex-1 py-2">
+        <PokerTable heroPosition={round.position} hand={round.hand} />
       </div>
 
       {feedback && (
@@ -123,16 +111,19 @@ export default function Trainer() {
           <button
             type="button"
             onClick={() => answer("fold")}
-            className="rounded-2xl bg-slate-800 py-5 text-xl font-bold text-slate-100 transition active:scale-95"
+            className="rounded-2xl bg-slate-800 py-4 text-xl font-bold text-slate-100 transition active:scale-95"
           >
             폴드
           </button>
           <button
             type="button"
             onClick={() => answer("open")}
-            className="rounded-2xl bg-emerald-600 py-5 text-xl font-bold text-white transition active:scale-95"
+            className="flex flex-col items-center rounded-2xl bg-emerald-600 py-3 text-white transition active:scale-95"
           >
-            오픈
+            <span className="text-xl font-bold leading-tight">오픈</span>
+            <span className="text-xs font-normal leading-tight opacity-80">
+              {OPEN_SIZE[round.position]}bb
+            </span>
           </button>
         </div>
       )}
