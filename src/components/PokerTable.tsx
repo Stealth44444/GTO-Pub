@@ -7,7 +7,7 @@ import {
   postedBlind,
   randomSuits,
   TABLE_FELT,
-  PREFLOP_POT,
+  preflopPot,
   type HandInfo,
 } from "@/lib/poker";
 import Card from "./Card";
@@ -16,11 +16,13 @@ export default function PokerTable({
   tableSize,
   heroPosition,
   stackBb,
+  anteBb,
   hand,
 }: {
   tableSize: number;
   heroPosition: string;
   stackBb: number;
+  anteBb: number;
   hand: HandInfo;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -63,13 +65,13 @@ export default function PokerTable({
 
         <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
-          POT {PREFLOP_POT}bb
+          POT {preflopPot(anteBb)}bb
         </div>
 
         {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
           const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
-          const seatStack = stackBb - postedBlind(tableSize, seat);
+          const seatStack = stackBb - postedBlind(tableSize, seat, anteBb);
           return (
             <div
               key={seat}

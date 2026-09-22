@@ -38,8 +38,8 @@ export default function TrainerClient() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--gw-bg)]">
-      <main className="relative min-h-0 flex-1">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--gw-bg)]">
+      <main className="relative min-h-0 flex-1 h-full">
         {tab === "train" &&
           (scenario ? (
             <Trainer

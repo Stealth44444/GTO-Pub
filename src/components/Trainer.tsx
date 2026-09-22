@@ -95,7 +95,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
 
   return (
     <div
-      className="relative flex h-full flex-col select-none overflow-hidden"
+      className="relative flex h-full min-h-0 flex-col select-none overflow-hidden"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div className="absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 bg-[var(--gw-bg)]/90 px-3 backdrop-blur-sm">
@@ -123,12 +123,13 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 pt-12">
+      <div className="relative min-h-0 flex-1">
         <div className="absolute inset-x-0 bottom-0 top-12">
           <PokerTable
             tableSize={situation.tableSize}
             heroPosition={situation.position}
             stackBb={situation.stackBb}
+            anteBb={situation.anteBb}
             hand={hand}
           />
         </div>

@@ -35,15 +35,19 @@ export const MODES: ModeInfo[] = [
 type PushfoldSpot = {
   tableSize: number;
   stackBb: number;
+  anteBb: number;
   position: string;
   shoveFrequencyPct: number;
   exploitabilityBb: number;
   shove: Record<string, number>;
 };
 
-const PUSHFOLD = pushfoldData as {
+// 스팟마다 shove의 키 집합이 달라서 TS는 JSON을 선택적 프로퍼티 유니온으로 추론한다.
+// 런타임 모양은 아래 타입이 맞으므로 unknown을 거쳐 단언한다.
+const PUSHFOLD = pushfoldData as unknown as {
   generatedAt: string;
   model: string;
+  anteBb: number;
   spots: PushfoldSpot[];
 };
 
@@ -83,6 +87,8 @@ export const DEFAULT_SCENARIO: Scenario = {
 export type Situation = {
   tableSize: number;
   stackBb: number;
+  /** BB 앤티. 화면의 팟·스택 표시가 솔버가 푼 게임과 같아야 한다. */
+  anteBb: number;
   position: string;
   actions: ActionId[];
 };
@@ -104,14 +110,17 @@ export function randomSituation(scenario: Scenario): Situation {
     return {
       tableSize: scenario.tableSize,
       stackBb,
+      anteBb: PUSHFOLD.anteBb,
       position: pick(positions),
       actions: ["fold", "shove"],
     };
   }
   // rfi는 아직 비활성이지만 구조는 같은 모양으로 유지한다.
+  // rfi는 딥스택 캐시 게임 가정이라 앤티가 없다.
   return {
     tableSize: scenario.tableSize,
     stackBb: scenario.stackBb ?? 100,
+    anteBb: 0,
     position: pick(pushfoldPositions(scenario.tableSize)),
     actions: ["fold", "open"],
   };
@@ -143,4 +152,5 @@ export function exploitabilityFor(situation: Situation): number | null {
 export const PUSHFOLD_META = {
   generatedAt: PUSHFOLD.generatedAt,
   model: PUSHFOLD.model,
+  anteBb: PUSHFOLD.anteBb,
 };
