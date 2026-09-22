@@ -74,12 +74,12 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                   isHero
                     ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
                     : folded
-                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-[var(--gw-surface-2)]"
-                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-[var(--gw-surface-3)]"
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
+                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
                 }`}
               >
                 <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
-                <span className="text-[10px] leading-tight tabular-nums sm:text-xs">
+                <span className="text-[10px] font-bold leading-tight tabular-nums sm:text-xs">
                   {folded ? "폴드" : SEAT_STACK[seat]}
                 </span>
               </div>
