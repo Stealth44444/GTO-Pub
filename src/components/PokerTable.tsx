@@ -40,50 +40,48 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
           return (
             <div
               key={seat}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
+              // 원과 정확히 같은 크기로 고정해서 shrink-to-fit 계산에 기대지 않고,
+              // translate(-50%,-50%)가 이 박스(=원) 자체를 {top,left}에 중심 정렬하게 함.
+              className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-18 sm:w-18"
               style={{ top, left }}
             >
-              {/* relative 래퍼 — 카드 줄은 원 위에 absolute로 얹어서, 바깥 translate가
-                  원 자체만 정확히 {top,left}에 중심 정렬하도록 함 (테이블 선 정렬 기준). */}
-              <div className="relative">
-                <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
-                  {isHero ? (
-                    <div className="flex">
-                      <div className="-mr-2 rotate-[-8deg]">
-                        <Card rank={hand.high} suit="s" />
-                      </div>
-                      <div className="rotate-[8deg]">
-                        <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
-                      </div>
+              <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
+                {isHero ? (
+                  <div className="flex">
+                    <div className="-mr-2 rotate-[-8deg]">
+                      <Card rank={hand.high} suit="s" />
                     </div>
-                  ) : !folded ? (
-                    <div className="flex gap-0.5">
-                      <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
-                      <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
+                    <div className="rotate-[8deg]">
+                      <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                ) : !folded ? (
+                  <div className="flex gap-0.5">
+                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
+                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
+                  </div>
+                ) : null}
+              </div>
 
-                {seat === "BTN" && (
-                  <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 shadow">
-                    D
-                  </span>
-                )}
+              {seat === "BTN" && (
+                <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 shadow">
+                  D
+                </span>
+              )}
 
-                <div
-                  className={`flex h-14 w-14 flex-col items-center justify-center rounded-full border-2 text-center sm:h-18 sm:w-18 ${
-                    isHero
-                      ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
-                      : folded
-                        ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
-                        : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
-                  }`}
-                >
-                  <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
-                  <span className="text-[10px] leading-tight tabular-nums sm:text-xs">
-                    {folded ? "폴드" : SEAT_STACK[seat]}
-                  </span>
-                </div>
+              <div
+                className={`flex h-full w-full flex-col items-center justify-center rounded-full border-2 text-center ${
+                  isHero
+                    ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
+                    : folded
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
+                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
+                }`}
+              >
+                <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
+                <span className="text-[10px] leading-tight tabular-nums sm:text-xs">
+                  {folded ? "폴드" : SEAT_STACK[seat]}
+                </span>
               </div>
             </div>
           );
