@@ -247,7 +247,7 @@ function main() {
   }
 
   writeFileSync(
-    "scripts/data/pushfold.json",
+    "src/data/pushfold.json",
     JSON.stringify({
       generatedAt: new Date().toISOString(),
       model: "chipEV push/fold, RFI spot, at most one caller assumed, no ante",
@@ -255,7 +255,7 @@ function main() {
       spots: results,
     }),
   );
-  console.log("저장: scripts/data/pushfold.json");
+  console.log("저장: src/data/pushfold.json");
 }
 
 main();

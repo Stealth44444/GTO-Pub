@@ -12,41 +12,122 @@ export const SEATS: Seat[] = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
 export const TABLE_FELT = { left: 8, top: 6, width: 84, height: 84 } as const;
 
 const feltLeft = TABLE_FELT.left;
-const feltRight = TABLE_FELT.left + TABLE_FELT.width;
 const feltTop = TABLE_FELT.top;
-const feltBottom = TABLE_FELT.top + TABLE_FELT.height;
 
-// 오벌 테이블 위 좌석 슬롯 좌표 (컨테이너 기준 %, translate(-50%,-50%)로 중심 정렬).
-// GTOWizard 트레이너처럼 히어로는 항상 bottom 슬롯에 고정하고, 나머지 포지션을
-// 히어로 기준 시계방향 순서로 회전 배치한다 (getTableSeats 참고).
-// 상/하단 좌석은 펠트의 top/bottom 엣지에, 좌/우측 좌석은 펠트의 left/right 엣지에
-// 좌석 원의 중심이 오도록 맞춰서 테이블 선이 정확히 원의 중앙을 지나가게 한다.
-type SlotKey = "bottom" | "leftLower" | "leftUpper" | "top" | "rightUpper" | "rightLower";
+// n인 테이블의 자리 이름 (액션 순서, 마지막 둘이 SB/BB).
+// 솔버(scripts/solve-pushfold.ts)의 seatNames와 같은 규칙이어야 데이터가 맞물린다.
+export function seatNames(tableSize: number): string[] {
+  if (tableSize === 6) return ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
+  if (tableSize === 9) return ["UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN", "SB", "BB"];
+  const fromBack = ["BB", "SB", "BTN", "CO", "HJ", "LJ", "UTG2", "UTG1", "UTG"];
+  return fromBack.slice(0, tableSize).reverse();
+}
 
-const SLOT_ORDER: SlotKey[] = ["bottom", "leftLower", "leftUpper", "top", "rightUpper", "rightLower"];
+// 테이블 외곽선(스타디움 = 모서리가 완전히 둥근 사각형) 둘레의 한 점을 구한다.
+// 좌표 단위는 "컨테이너 높이의 1%"로 통일한다. 퍼센트를 가로/세로에 그대로 쓰면
+// 실제 픽셀 비율이 달라 둘레 계산이 틀어지기 때문이다.
+//
+// 하단 중앙에서 출발해 왼쪽을 거쳐 한 바퀴 돈다.
+function stadiumPoint(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+  fraction: number,
+): { x: number; y: number } {
+  // CSS의 border-radius: 999px는 짧은 변의 절반으로 잘린다.
+  const radius = Math.min(width, height) / 2;
+  const straightH = Math.max(0, width - 2 * radius); // 위/아래 직선 구간
+  const straightV = Math.max(0, height - 2 * radius); // 좌/우 직선 구간
+  const quarter = (Math.PI * radius) / 2;
 
-export const SLOT_LAYOUT: Record<SlotKey, { top: string; left: string }> = {
-  bottom: { top: `${feltBottom}%`, left: "50%" },
-  leftLower: { top: "64%", left: `${feltLeft}%` },
-  leftUpper: { top: "32%", left: `${feltLeft}%` },
-  top: { top: `${feltTop}%`, left: "50%" },
-  rightUpper: { top: "32%", left: `${feltRight}%` },
-  rightLower: { top: "64%", left: `${feltRight}%` },
-};
+  const perimeter = 2 * Math.PI * radius + 2 * straightH + 2 * straightV;
+  let s = (((fraction % 1) + 1) % 1) * perimeter;
 
-export function getTableSeats(heroPosition: Position): { seat: Seat; top: string; left: string }[] {
-  const heroIdx = SEATS.indexOf(heroPosition);
-  return SLOT_ORDER.map((slot, i) => {
-    const seat = SEATS[(heroIdx + i) % SEATS.length];
-    return { seat, ...SLOT_LAYOUT[slot] };
+  // 네 모서리 호의 중심
+  const cornerX = straightH / 2;
+  const cornerY = straightV / 2;
+
+  // 각도가 커질수록 하단(π/2) → 왼쪽(π) → 상단(3π/2) → 오른쪽(2π) 순으로 진행한다.
+  // (화면 좌표는 y가 아래로 증가하므로 sin이 양수면 아래쪽이다)
+  const onArc = (cx: number, cy: number, fromAngle: number, travelled: number) => {
+    const angle = fromAngle + travelled / radius;
+    return { x: centerX + cx + radius * Math.cos(angle), y: centerY + cy + radius * Math.sin(angle) };
+  };
+
+  // 1. 아래 직선의 왼쪽 절반
+  if (s < straightH / 2) return { x: centerX - s, y: centerY + height / 2 };
+  s -= straightH / 2;
+  // 2. 좌하단 호 (아래 → 왼쪽)
+  if (s < quarter) return onArc(-cornerX, cornerY, Math.PI / 2, s);
+  s -= quarter;
+  // 3. 왼쪽 직선 (아래 → 위)
+  if (s < straightV) return { x: centerX - width / 2, y: centerY + cornerY - s };
+  s -= straightV;
+  // 4. 좌상단 호 (왼쪽 → 위)
+  if (s < quarter) return onArc(-cornerX, -cornerY, Math.PI, s);
+  s -= quarter;
+  // 5. 위 직선 (왼쪽 → 오른쪽)
+  if (s < straightH) return { x: centerX - cornerX + s, y: centerY - height / 2 };
+  s -= straightH;
+  // 6. 우상단 호 (위 → 오른쪽)
+  if (s < quarter) return onArc(cornerX, -cornerY, Math.PI * 1.5, s);
+  s -= quarter;
+  // 7. 오른쪽 직선 (위 → 아래)
+  if (s < straightV) return { x: centerX + width / 2, y: centerY - cornerY + s };
+  s -= straightV;
+  // 8. 우하단 호 (오른쪽 → 아래)
+  if (s < quarter) return onArc(cornerX, cornerY, Math.PI * 2, s);
+  s -= quarter;
+  // 9. 아래 직선의 오른쪽 절반
+  return { x: centerX + cornerX - s, y: centerY + height / 2 };
+}
+
+export type TableSeat = { seat: string; top: string; left: string };
+
+// 히어로를 하단 중앙에 고정하고 나머지를 액션 순서대로 외곽선 둘레에 균등 배치한다.
+// aspect = 컨테이너 가로/세로 픽셀 비율. 이걸 받아야 좌석이 실제 선 위에 놓인다.
+export function getTableSeats(
+  tableSize: number,
+  heroPosition: string,
+  aspect: number,
+): TableSeat[] {
+  const names = seatNames(tableSize);
+  const heroIdx = names.indexOf(heroPosition);
+
+  // 높이를 100으로 두면 가로는 100*aspect가 된다.
+  const widthUnits = 100 * aspect;
+  const feltWidth = (TABLE_FELT.width / 100) * widthUnits;
+  const feltHeight = TABLE_FELT.height;
+  const centerX = (feltLeft / 100) * widthUnits + feltWidth / 2;
+  const centerY = feltTop + feltHeight / 2;
+
+  return names.map((_, i) => {
+    const seat = names[(heroIdx + i) % names.length];
+    const { x, y } = stadiumPoint(centerX, centerY, feltWidth, feltHeight, i / names.length);
+    return { seat, left: `${(x / widthUnits) * 100}%`, top: `${y}%` };
   });
 }
 
-// 히어로가 레이즈 퍼스트 인(RFI) 하는 스팟이므로, 액션 순서상 히어로보다 앞선
-// 포지션은 전부 폴드했다고 가정한다 (카드를 보여주지 않음). 히어로 뒤 포지션은
-// 아직 액션 전이라 카드 뒷면을 보여준다.
-export function isFoldedBeforeHero(seat: Seat, heroPosition: Position): boolean {
-  return SEATS.indexOf(seat) < SEATS.indexOf(heroPosition);
+// 히어로가 첫 액션을 하는 스팟이므로, 액션 순서상 히어로보다 앞선 자리는
+// 전부 폴드했다고 본다 (카드를 보여주지 않는다). 뒤 자리는 아직 액션 전이라
+// 카드 뒷면을 보여준다.
+export function isFoldedBeforeHero(
+  tableSize: number,
+  seat: string,
+  heroPosition: string,
+): boolean {
+  const names = seatNames(tableSize);
+  return names.indexOf(seat) < names.indexOf(heroPosition);
+}
+
+// 자리별로 이미 낸 블라인드 (SB 0.5, BB 1, 나머지 0)
+export function postedBlind(tableSize: number, seat: string): number {
+  const names = seatNames(tableSize);
+  const idx = names.indexOf(seat);
+  if (idx === names.length - 1) return 1;
+  if (idx === names.length - 2) return 0.5;
+  return 0;
 }
 
 const STACK_BASE = 200;

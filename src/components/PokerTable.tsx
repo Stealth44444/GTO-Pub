@@ -1,27 +1,56 @@
-import { useMemo } from "react";
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getTableSeats,
   isFoldedBeforeHero,
-  SEAT_STACK,
+  postedBlind,
+  randomSuits,
   TABLE_FELT,
   PREFLOP_POT,
-  randomSuits,
   type HandInfo,
-  type Position,
 } from "@/lib/poker";
 import Card from "./Card";
 
-export default function PokerTable({ heroPosition, hand }: { heroPosition: Position; hand: HandInfo }) {
-  // flex-1 부모의 계산된 높이를 자식의 height:100%가 안정적으로 못 읽는 경우가 있어
-  // absolute + inset-0으로 부모 박스를 직접 채운 뒤, 그 안에서 퍼센트 좌표로 좌석을 배치합니다.
+export default function PokerTable({
+  tableSize,
+  heroPosition,
+  stackBb,
+  hand,
+}: {
+  tableSize: number;
+  heroPosition: string;
+  stackBb: number;
+  hand: HandInfo;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  // 좌석을 외곽선 위에 정확히 놓으려면 컨테이너의 실제 가로/세로 비율이 필요하다.
+  const [aspect, setAspect] = useState(0.66);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const update = () => {
+      if (box.clientHeight > 0) setAspect(box.clientWidth / box.clientHeight);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
+  const seats = useMemo(
+    () => getTableSeats(tableSize, heroPosition, aspect),
+    [tableSize, heroPosition, aspect],
+  );
 
   return (
     <div className="absolute inset-0">
-      <div className="relative mx-auto h-full w-full max-w-sm px-2">
+      <div ref={boxRef} className="relative mx-auto h-full w-full max-w-sm px-2">
         {/* 테이블 펠트 — GTOWizard의 --table-radius: 999px는 완전한 타원이 아니라
-            좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라 채움 없이 외곽선만 사용.
-            좌석 서클 중심이 이 엣지 위에 오도록 SLOT_LAYOUT과 좌표를 공유함(poker.ts 참고). */}
+            좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라
+            채움 없이 외곽선만 사용. 좌석 좌표는 이 값을 공유한다(poker.ts 참고). */}
         <div
           className="absolute rounded-[999px] border-[3px] border-[var(--gw-border)]"
           style={{
@@ -32,21 +61,20 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
           }}
         />
 
-        {/* 팟 표시 (테이블 중앙) */}
         <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
           POT {PREFLOP_POT}bb
         </div>
 
-        {getTableSeats(heroPosition).map(({ seat, top, left }) => {
+        {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
-          const folded = !isHero && isFoldedBeforeHero(seat, heroPosition);
+          const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
+          const seatStack = stackBb - postedBlind(tableSize, seat);
           return (
             <div
               key={seat}
-              // 원과 정확히 같은 크기로 고정해서 shrink-to-fit 계산에 기대지 않고,
-              // translate(-50%,-50%)가 이 박스(=원) 자체를 {top,left}에 중심 정렬하게 함.
-              className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-18 sm:w-18"
+              // 원과 같은 크기로 고정해 translate(-50%,-50%)가 원 자체를 좌표에 중심 정렬하게 한다.
+              className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-16 sm:w-16"
               style={{ top, left }}
             >
               <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
@@ -57,8 +85,8 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                   </div>
                 ) : !folded ? (
                   <div className="flex gap-0.5">
-                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-border-strong)]" />
-                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-border-strong)]" />
+                    <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
+                    <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
                   </div>
                 ) : null}
               </div>
@@ -74,13 +102,13 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                   isHero
                     ? "border-[var(--gw-accent)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
                     : folded
-                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-[var(--gw-text-muted)]"
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
                       : "border-[var(--gw-border)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
                 }`}
               >
-                <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
-                <span className="text-[10px] font-bold leading-tight tabular-nums sm:text-xs">
-                  {folded ? "폴드" : SEAT_STACK[seat]}
+                <span className="text-[11px] font-bold leading-tight sm:text-xs">{seat}</span>
+                <span className="text-[10px] font-bold leading-tight tabular-nums">
+                  {folded ? "폴드" : seatStack}
                 </span>
               </div>
             </div>

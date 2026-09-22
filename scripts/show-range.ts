@@ -17,7 +17,7 @@ type Spot = {
   shove: Record<string, number>;
 };
 
-const data = JSON.parse(readFileSync("scripts/data/pushfold.json", "utf8")) as {
+const data = JSON.parse(readFileSync("src/data/pushfold.json", "utf8")) as {
   model: string;
   spots: Spot[];
 };

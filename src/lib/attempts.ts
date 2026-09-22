@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { Action, Position } from "./poker";
+import type { Action } from "./poker";
 
 let guestUserEnsured = false;
 
@@ -14,7 +14,8 @@ export async function ensureGuestUser(userId: string) {
 
 export async function logAttempt(params: {
   userId: string;
-  position: Position;
+  // 자리 이름은 인원에 따라 달라진다 (6인은 UTG/HJ/…, 9인은 UTG1/UTG2/LJ 포함).
+  position: string;
   handCode: string;
   userAction: Action;
   correctAction: Action;
