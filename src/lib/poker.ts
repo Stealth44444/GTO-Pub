@@ -20,20 +20,31 @@ export const SEAT_LABEL: Record<Seat, string> = {
   BB: "BB (빅 블라인드)",
 };
 
+// 테이블 펠트 외곽선 위치/크기 (컨테이너 기준 %). PokerTable의 펠트 렌더링과
+// 아래 SLOT_LAYOUT이 이 값을 공유해서, 좌석 서클 중심이 항상 외곽선 위에 오도록 한다.
+export const TABLE_FELT = { left: 8, top: 6, width: 84, height: 84 } as const;
+
+const feltLeft = TABLE_FELT.left;
+const feltRight = TABLE_FELT.left + TABLE_FELT.width;
+const feltTop = TABLE_FELT.top;
+const feltBottom = TABLE_FELT.top + TABLE_FELT.height;
+
 // 오벌 테이블 위 좌석 슬롯 좌표 (컨테이너 기준 %, translate(-50%,-50%)로 중심 정렬).
 // GTOWizard 트레이너처럼 히어로는 항상 bottom 슬롯에 고정하고, 나머지 포지션을
 // 히어로 기준 시계방향 순서로 회전 배치한다 (getTableSeats 참고).
+// 상/하단 좌석은 펠트의 top/bottom 엣지에, 좌/우측 좌석은 펠트의 left/right 엣지에
+// 좌석 원의 중심이 오도록 맞춰서 테이블 선이 정확히 원의 중앙을 지나가게 한다.
 type SlotKey = "bottom" | "leftLower" | "leftUpper" | "top" | "rightUpper" | "rightLower";
 
 const SLOT_ORDER: SlotKey[] = ["bottom", "leftLower", "leftUpper", "top", "rightUpper", "rightLower"];
 
 export const SLOT_LAYOUT: Record<SlotKey, { top: string; left: string }> = {
-  bottom: { top: "84%", left: "50%" },
-  leftLower: { top: "64%", left: "12%" },
-  leftUpper: { top: "22%", left: "15%" },
-  top: { top: "4%", left: "50%" },
-  rightUpper: { top: "22%", left: "85%" },
-  rightLower: { top: "64%", left: "88%" },
+  bottom: { top: `${feltBottom}%`, left: "50%" },
+  leftLower: { top: "64%", left: `${feltLeft}%` },
+  leftUpper: { top: "22%", left: `${feltLeft}%` },
+  top: { top: `${feltTop}%`, left: "50%" },
+  rightUpper: { top: "22%", left: `${feltRight}%` },
+  rightLower: { top: "64%", left: `${feltRight}%` },
 };
 
 export function getTableSeats(heroPosition: Position): { seat: Seat; top: string; left: string }[] {
