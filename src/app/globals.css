@@ -5,12 +5,28 @@
 }
 
 :root {
-  /* GTOWizard 실제 CSS 번들(app.gtowizard.com)에서 확인한 값 그대로 사용 */
-  --gw-bg: #121212; /* --clr-black-0 / --app-surface-1, body 배경 */
-  --gw-surface-1: #1e1e1e; /* --clr-black-1 */
-  --gw-surface-2: #1f1f1f; /* --app-surface-2 */
-  --gw-surface-3: #292929; /* --app-surface-3 */
-  --gw-table-header: #161616; /* --app-surface-table */
+  --gw-bg: #121212;
+  --gw-surface-1: #1e1e1e;
+  --gw-surface-2: #1f1f1f;
+  --gw-surface-3: #292929;
+  --gw-table-header: #161616;
+  --gw-border: #333333;
+  --gw-border-strong: #555a5a;
+  --gw-text-primary: #f0f0f0;
+  --gw-text-secondary: #c8c8c8;
+  --gw-text-muted: #8d9393;
+  --gw-accent: #9cf5ae;
+  --gw-accent-strong: #22c55e;
+  --gw-danger: #e0525f;
+  --gw-card-spade: #504f4f;
+  --gw-card-heart: #ad0e04;
+  --gw-card-club: #0ead2c;
+  --gw-card-spade-ink: #2b2a2a;
+  --gw-card-heart-ink: #5f0802;
+  --gw-card-club-ink: #085f18;
+  --gw-radius-control: 6px;
+  --gw-radius-card: 6px;
+  --gw-card-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 html {
@@ -21,4 +37,36 @@ html {
 body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes gw-result-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gw-history-enter {
+  from {
+    opacity: 0;
+    transform: translateX(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }

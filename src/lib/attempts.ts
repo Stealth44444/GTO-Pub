@@ -18,6 +18,8 @@ export async function logAttempt(params: {
   handCode: string;
   userAction: Action;
   correctAction: Action;
+  selectedFrequency?: number;
+  evLossBb?: number;
 }) {
   if (!supabase || !params.userId) return;
   const { error } = await supabase.from("training_attempts").insert({
@@ -27,6 +29,8 @@ export async function logAttempt(params: {
     user_action: params.userAction,
     correct_action: params.correctAction,
     is_correct: params.userAction === params.correctAction,
+    selected_frequency: params.selectedFrequency ?? null,
+    ev_loss_bb: params.evLossBb ?? null,
   });
   if (error) console.error("Failed to log attempt", error.message);
 }

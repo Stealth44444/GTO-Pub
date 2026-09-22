@@ -2,23 +2,10 @@ export type Position = "UTG" | "HJ" | "CO" | "BTN" | "SB";
 
 export const POSITIONS: Position[] = ["UTG", "HJ", "CO", "BTN", "SB"];
 
-export const POSITION_LABEL: Record<Position, string> = {
-  UTG: "UTG (얼리 포지션)",
-  HJ: "HJ (하이잭)",
-  CO: "CO (컷오프)",
-  BTN: "BTN (버튼)",
-  SB: "SB (스몰 블라인드)",
-};
-
 // 6-max 테이블 시각화용 — BB는 학습 대상 포지션은 아니지만 테이블에는 항상 표시됨.
 export type Seat = Position | "BB";
 
 export const SEATS: Seat[] = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
-
-export const SEAT_LABEL: Record<Seat, string> = {
-  ...POSITION_LABEL,
-  BB: "BB (빅 블라인드)",
-};
 
 // 테이블 펠트 외곽선 위치/크기 (컨테이너 기준 %). PokerTable의 펠트 렌더링과
 // 아래 SLOT_LAYOUT이 이 값을 공유해서, 좌석 서클 중심이 항상 외곽선 위에 오도록 한다.
@@ -41,9 +28,9 @@ const SLOT_ORDER: SlotKey[] = ["bottom", "leftLower", "leftUpper", "top", "right
 export const SLOT_LAYOUT: Record<SlotKey, { top: string; left: string }> = {
   bottom: { top: `${feltBottom}%`, left: "50%" },
   leftLower: { top: "64%", left: `${feltLeft}%` },
-  leftUpper: { top: "22%", left: `${feltLeft}%` },
+  leftUpper: { top: "32%", left: `${feltLeft}%` },
   top: { top: `${feltTop}%`, left: "50%" },
-  rightUpper: { top: "22%", left: `${feltRight}%` },
+  rightUpper: { top: "32%", left: `${feltRight}%` },
   rightLower: { top: "64%", left: `${feltRight}%` },
 };
 
@@ -106,6 +93,13 @@ export interface HandInfo {
   combos: number;
 }
 
+export type Action = "open" | "fold";
+
+export type ActionFrequency = {
+  open: number;
+  fold: number;
+};
+
 function chenScore(hand: HandInfo): number {
   if (hand.pair) return Math.max(CHEN_VALUE[hand.high] * 2, 5);
   let score = CHEN_VALUE[hand.high];
@@ -150,26 +144,31 @@ const OPEN_PCT: Record<Position, number> = {
   BTN: 0.45,
 };
 
-const OPEN_RANGE: Record<Position, Set<string>> = (() => {
-  const result = {} as Record<Position, Set<string>>;
+const ACTION_FREQUENCIES: Record<Position, Map<string, ActionFrequency>> = (() => {
+  const result = {} as Record<Position, Map<string, ActionFrequency>>;
   for (const pos of POSITIONS) {
     const target = TOTAL_COMBOS * OPEN_PCT[pos];
-    let cumulative = 0;
-    const set = new Set<string>();
+    let remaining = target;
+    const frequencies = new Map<string, ActionFrequency>();
     for (const hand of RANKED_HANDS) {
-      if (cumulative >= target) break;
-      set.add(hand.code);
-      cumulative += hand.combos;
+      const open = Math.max(0, Math.min(1, remaining / hand.combos));
+      frequencies.set(hand.code, {
+        open: Math.round(open * 100),
+        fold: Math.round((1 - open) * 100),
+      });
+      remaining -= hand.combos;
     }
-    result[pos] = set;
+    result[pos] = frequencies;
   }
   return result;
 })();
 
-export type Action = "open" | "fold";
+export function getActionFrequency(position: Position, handCode: string): ActionFrequency {
+  return ACTION_FREQUENCIES[position].get(handCode) ?? { open: 0, fold: 100 };
+}
 
 export function correctAction(position: Position, handCode: string): Action {
-  return OPEN_RANGE[position].has(handCode) ? "open" : "fold";
+  return getActionFrequency(position, handCode).open >= 50 ? "open" : "fold";
 }
 
 export function randomHand(): HandInfo {
@@ -183,4 +182,18 @@ export function randomHand(): HandInfo {
 
 export function randomPosition(): Position {
   return POSITIONS[Math.floor(Math.random() * POSITIONS.length)];
+}
+
+// 카드 표시용 슈트 — 3종만 순환 사용 (다이아는 카드 디자인 시스템에서 별도 정의 안 함).
+export type Suit = "s" | "h" | "c";
+
+const ALL_SUITS: Suit[] = ["s", "h", "c"];
+
+// 수티드면 두 카드에 같은 슈트를, 오프수트/페어면 서로 다른 슈트 두 개를 무작위로 배정.
+export function randomSuits(suited: boolean): [Suit, Suit] {
+  const first = ALL_SUITS[Math.floor(Math.random() * ALL_SUITS.length)];
+  if (suited) return [first, first];
+  const rest = ALL_SUITS.filter((s) => s !== first);
+  const second = rest[Math.floor(Math.random() * rest.length)];
+  return [first, second];
 }

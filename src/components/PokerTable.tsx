@@ -1,9 +1,11 @@
+import { useMemo } from "react";
 import {
   getTableSeats,
   isFoldedBeforeHero,
   SEAT_STACK,
   TABLE_FELT,
   PREFLOP_POT,
+  randomSuits,
   type HandInfo,
   type Position,
 } from "@/lib/poker";
@@ -12,6 +14,8 @@ import Card from "./Card";
 export default function PokerTable({ heroPosition, hand }: { heroPosition: Position; hand: HandInfo }) {
   // flex-1 부모의 계산된 높이를 자식의 height:100%가 안정적으로 못 읽는 경우가 있어
   // absolute + inset-0으로 부모 박스를 직접 채운 뒤, 그 안에서 퍼센트 좌표로 좌석을 배치합니다.
+  const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
+
   return (
     <div className="absolute inset-0">
       <div className="relative mx-auto h-full w-full max-w-sm px-2">
@@ -19,7 +23,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
             좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라 채움 없이 외곽선만 사용.
             좌석 서클 중심이 이 엣지 위에 오도록 SLOT_LAYOUT과 좌표를 공유함(poker.ts 참고). */}
         <div
-          className="absolute rounded-[999px] border-[3px] border-[var(--gw-surface-3)]"
+          className="absolute rounded-[999px] border-[3px] border-[var(--gw-border)]"
           style={{
             left: `${TABLE_FELT.left}%`,
             top: `${TABLE_FELT.top}%`,
@@ -29,7 +33,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
         />
 
         {/* 팟 표시 (테이블 중앙) */}
-        <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-slate-400">
+        <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
           POT {PREFLOP_POT}bb
         </div>
@@ -48,19 +52,19 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
               <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
                 {isHero ? (
                   <div className="flex gap-1">
-                    <Card rank={hand.high} suit="s" />
-                    <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
+                    <Card rank={hand.high} suit={highSuit} />
+                    <Card rank={hand.low} suit={lowSuit} />
                   </div>
                 ) : !folded ? (
                   <div className="flex gap-0.5">
-                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
-                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
+                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-border-strong)]" />
+                    <span className="h-6 w-4 rounded-sm bg-[var(--gw-border-strong)]" />
                   </div>
                 ) : null}
               </div>
 
               {seat === "BTN" && (
-                <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 shadow">
+                <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--gw-text-primary)] text-[10px] font-bold text-[var(--gw-bg)] shadow">
                   D
                 </span>
               )}
@@ -68,10 +72,10 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
               <div
                 className={`flex h-full w-full flex-col items-center justify-center rounded-full border-[3px] text-center ${
                   isHero
-                    ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
+                    ? "border-[var(--gw-accent)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
                     : folded
-                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
-                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-[var(--gw-text-muted)]"
+                      : "border-[var(--gw-border)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
                 }`}
               >
                 <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
