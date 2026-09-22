@@ -20,7 +20,7 @@
 //
 // 실행: node --experimental-strip-types scripts/solve-pushfold.ts
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 
 type EquityTable = {
   hands: string[];
@@ -191,6 +191,27 @@ function shoveEvByHand(spot: Spot, sol: Solution): Float64Array {
   return ev;
 }
 
+// 콜러가 콜했을 때의 EV(폴드 대비, bb). 폴드의 EV가 0이므로 이 값이 두 액션의
+// EV 차이다. 히어로의 올인 레인지 상대 승률로 계산한다.
+function callEvByHand(
+  spot: Spot,
+  sol: Solution,
+  seatIndex: number,
+  behind: number[],
+  posted: number[],
+  totalPosted: number,
+): Float64Array {
+  const heroPosted = posted[spot.heroSeat];
+  const callerPosted = posted[behind[seatIndex]];
+  const pot = potWhenCalled(spot, heroPosted, callerPosted, totalPosted);
+  const callerRisk = spot.stackBb - callerPosted;
+  const ev = new Float64Array(N);
+  for (let j = 0; j < N; j++) {
+    ev[j] = equityVsRange(j, sol.shove) * pot - callerRisk;
+  }
+  return ev;
+}
+
 // 최적 대응 대비 손실(bb/핸드). 0에 가까울수록 균형에 가깝다.
 function exploitability(spot: Spot, sol: Solution): number {
   const posted = postedByseat(spot.tableSize, spot.anteBb);
@@ -254,6 +275,7 @@ function main() {
   const tableSizes = [9, 6];
   const stacks = [8, 10, 12, 15, 20];
   const results: Record<string, unknown>[] = [];
+  const callResults: Record<string, unknown>[] = [];
 
   for (const tableSize of tableSizes) {
     const names = seatNames(tableSize);
@@ -287,8 +309,44 @@ function main() {
             ),
           ),
           // 전 핸드를 담는다. 어떤 핸드가 나와도 채점해야 하므로 걸러낼 수 없다.
-          shoveEvBb: Object.fromEntries(HANDS.map((h, i) => [h, Number(ev[i].toFixed(3))])),
+          // 순서는 최상위 hands와 같다.
+          shoveEvBb: Array.from(ev, (v) => Number(v.toFixed(3))),
         });
+
+        // 같은 풀이에서 나온 콜 레인지. 블라인드를 내지 않은 자리들은 팟오즈와
+        // 상대 레인지가 모두 같아 결과가 동일하므로, 같은 값을 자리 수만큼
+        // 저장하지 않고 한 번만 담고 해당 자리들을 함께 적는다.
+        const posted = postedByseat(tableSize, anteBb);
+        const totalPosted = posted.reduce((a, b) => a + b, 0);
+        const behind: number[] = [];
+        for (let st = heroSeat + 1; st < tableSize; st++) behind.push(st);
+
+        const grouped = new Map<string, { seats: string[]; range: Float64Array; ev: Float64Array }>();
+        for (let k = 0; k < behind.length; k++) {
+          const range = sol.calls[k];
+          const callEv = callEvByHand(spot, sol, k, behind, posted, totalPosted);
+          const key = Array.from(range, (v) => v.toFixed(3)).join(",");
+          const found = grouped.get(key);
+          if (found) found.seats.push(names[behind[k]]);
+          else grouped.set(key, { seats: [names[behind[k]]], range, ev: callEv });
+        }
+
+        for (const { seats, range, ev: callEv } of grouped.values()) {
+          callResults.push({
+            tableSize,
+            stackBb,
+            anteBb,
+            shoverPosition: names[heroSeat],
+            callerPositions: seats,
+            callFrequencyPct: Number((rangeFrequency(range) * 100).toFixed(2)),
+            call: Object.fromEntries(
+              HANDS.map((h, i) => [h, Number(range[i].toFixed(3))]).filter(
+                ([, v]) => (v as number) >= 0.005,
+              ),
+            ),
+            callEvBb: Array.from(callEv, (v) => Number(v.toFixed(3))),
+          });
+        }
       }
 
       console.log(`${String(stackBb).padStart(3)}bb ` + row.join("") + `   (최대 오차 ${worstExploit.toFixed(4)}bb)`);
@@ -296,17 +354,41 @@ function main() {
     console.log("");
   }
 
+  // 두 파일로 나눈다. 올인 트레이너만 쓰는 사람에게 콜 데이터까지 받게 할
+  // 이유가 없다 — QR로 들어오는 앱이라 첫 로드 크기가 곧 진입 마찰이다.
+  const generatedAt = new Date().toISOString();
+  const equitySource = { generatedAt: raw.generatedAt, samples: raw.targetSamplesPerMatchup };
+
   writeFileSync(
     "src/data/pushfold.json",
     JSON.stringify({
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       model: "chipEV push/fold, RFI spot, at most one caller assumed",
       anteBb,
-      equitySource: { generatedAt: raw.generatedAt, samples: raw.targetSamplesPerMatchup },
+      equitySource,
+      hands: HANDS,
       spots: results,
     }),
   );
-  console.log("저장: src/data/pushfold.json");
+
+  writeFileSync(
+    "src/data/pushfold-calls.json",
+    JSON.stringify({
+      generatedAt,
+      model: "chipEV call/fold vs a single shove, no further callers",
+      anteBb,
+      equitySource,
+      hands: HANDS,
+      callSpots: callResults,
+    }),
+  );
+
+  const kb = (f: string) => (statSync(f).size / 1024).toFixed(0);
+  console.log(
+    `저장: src/data/pushfold.json (올인 ${results.length}스팟, ${kb("src/data/pushfold.json")}KB)
+` +
+      `      src/data/pushfold-calls.json (콜 ${callResults.length}스팟, ${kb("src/data/pushfold-calls.json")}KB)`,
+  );
 }
 
 main();

@@ -61,8 +61,9 @@ type PushfoldSpot = {
   shoveFrequencyPct: number;
   exploitabilityBb: number;
   shove: Record<string, number>;
-  /** 올인의 EV(폴드 대비, bb). 폴드 EV가 0이라 이 값이 두 액션의 EV 차이다. */
-  shoveEvBb: Record<string, number>;
+  /** 올인의 EV(폴드 대비, bb). 폴드 EV가 0이라 이 값이 두 액션의 EV 차이다.
+   *  핸드 이름을 키로 쓰면 169개 키가 스팟마다 되풀이되므로 hands 순서의 배열로 담는다. */
+  shoveEvBb: number[];
 };
 
 // 스팟마다 shove의 키 집합이 달라서 TS는 JSON을 선택적 프로퍼티 유니온으로 추론한다.
@@ -71,8 +72,12 @@ const PUSHFOLD = pushfoldData as unknown as {
   generatedAt: string;
   model: string;
   anteBb: number;
+  hands: string[];
   spots: PushfoldSpot[];
 };
+
+/** shoveEvBb 같은 배열을 핸드 이름으로 읽기 위한 색인. */
+const HAND_INDEX = new Map(PUSHFOLD.hands.map((h, i) => [h, i]));
 
 export const PUSHFOLD_TABLE_SIZES = [...new Set(PUSHFOLD.spots.map((s) => s.tableSize))].sort(
   (a, b) => a - b,
@@ -176,15 +181,22 @@ export function solutionFor(
  * (해설 패널이 "폴드 0 EV / 올인 -0.38 EV"처럼 나란히 보여주기 위한 값).
  * 아직 계산된 데이터가 없는 모드는 null.
  */
+function shoveEv(situation: Situation, handCode: string): number | null {
+  const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
+  const i = HAND_INDEX.get(handCode);
+  if (!spot || i === undefined) return null;
+  const ev = spot.shoveEvBb?.[i];
+  return ev === undefined ? null : ev;
+}
+
 export function actionEvFor(
   mode: ModeId,
   situation: Situation,
   handCode: string,
 ): Partial<Record<ActionId, number>> | null {
   if (mode !== "pushfold") return null;
-  const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
-  const ev = spot?.shoveEvBb?.[handCode];
-  if (ev === undefined) return null;
+  const ev = shoveEv(situation, handCode);
+  if (ev === null) return null;
   return { fold: 0, shove: ev };
 }
 
@@ -200,10 +212,8 @@ export function evLossFor(
   action: ActionId,
 ): number | null {
   if (mode !== "pushfold") return null;
-  const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
-  // JSON은 unknown을 거쳐 단언하므로 타입이 런타임 모양을 보증하지 않는다.
-  const ev = spot?.shoveEvBb?.[handCode];
-  if (ev === undefined) return null;
+  const ev = shoveEv(situation, handCode);
+  if (ev === null) return null;
   if (action === "shove") return ev >= 0 ? 0 : Number((-ev).toFixed(4));
   if (action === "fold") return ev <= 0 ? 0 : Number(ev.toFixed(4));
   return null;

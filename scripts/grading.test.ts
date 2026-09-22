@@ -38,21 +38,34 @@ type Spot = {
   tableSize: number;
   stackBb: number;
   position: string;
-  shoveEvBb: Record<string, number>;
+  // 핸드 이름이 아니라 최상위 hands 순서의 배열이다. 배열에 문자열 키로 접근하면
+  // "66" 같은 이름이 인덱스 66으로 해석돼 엉뚱한 핸드의 EV가 조용히 나온다.
+  shoveEvBb: number[];
 };
-const data = JSON.parse(readFileSync("src/data/pushfold.json", "utf8")) as { spots: Spot[] };
+const data = JSON.parse(readFileSync("src/data/pushfold.json", "utf8")) as {
+  hands: string[];
+  spots: Spot[];
+};
+const handIndex = new Map(data.hands.map((h, i) => [h, i]));
 const find = (tableSize: number, stackBb: number, position: string) =>
   data.spots.find(
     (s) => s.tableSize === tableSize && s.stackBb === stackBb && s.position === position,
   )!;
+function evOf(tableSize: number, stackBb: number, position: string, hand: string): number {
+  const i = handIndex.get(hand);
+  if (i === undefined) throw new Error(`알 수 없는 핸드: ${hand}`);
+  const ev = find(tableSize, stackBb, position).shoveEvBb[i];
+  if (!Number.isFinite(ev)) throw new Error(`EV가 없다: ${tableSize}/${stackBb}/${position}/${hand}`);
+  return ev;
+}
 
 // 폴드의 EV가 0이므로 shoveEvBb가 곧 두 액션의 EV 차이다.
 // 올인을 골랐을 때의 손실은 EV가 음수일 때 그 절댓값이다.
 function shoveLoss(tableSize: number, stackBb: number, position: string, hand: string) {
-  return Math.max(0, -find(tableSize, stackBb, position).shoveEvBb[hand]);
+  return Math.max(0, -evOf(tableSize, stackBb, position, hand));
 }
 function foldLoss(tableSize: number, stackBb: number, position: string, hand: string) {
-  return Math.max(0, find(tableSize, stackBb, position).shoveEvBb[hand]);
+  return Math.max(0, evOf(tableSize, stackBb, position, hand));
 }
 
 function expectSpot(loss: number, expected: string, label: string) {
