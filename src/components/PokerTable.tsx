@@ -1,57 +1,65 @@
-import { SEATS, SEAT_LAYOUT, SEAT_STACK, PREFLOP_POT, type HandInfo, type Position } from "@/lib/poker";
+import { getTableSeats, SEAT_STACK, PREFLOP_POT, type HandInfo, type Position } from "@/lib/poker";
 import Card from "./Card";
 
 export default function PokerTable({ heroPosition, hand }: { heroPosition: Position; hand: HandInfo }) {
+  // flex-1 부모의 계산된 높이를 자식의 height:100%가 안정적으로 못 읽는 경우가 있어
+  // absolute + inset-0으로 부모 박스를 직접 채운 뒤, 그 안에서 퍼센트 좌표로 좌석을 배치합니다.
   return (
-    <div className="relative mx-auto h-full w-full max-w-sm px-2">
-      {/* 테이블 펠트 */}
-      <div className="absolute left-[14%] top-[13%] h-[60%] w-[72%] rounded-[50%] border-2 border-slate-700/50 bg-slate-900/40" />
+    <div className="absolute inset-0">
+      <div className="relative mx-auto h-full w-full max-w-sm px-2">
+        {/* 테이블 펠트 */}
+        <div className="absolute left-[14%] top-[13%] h-[60%] w-[72%] rounded-[50%] border-2 border-slate-700/50 bg-slate-900/40" />
 
-      {/* 팟 + 히어로 핸드 (테이블 중앙) */}
-      <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-3">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+        {/* 팟 표시 (테이블 중앙) */}
+        <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-slate-400">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
           POT {PREFLOP_POT}bb
         </div>
-        <div className="flex gap-2">
-          <Card rank={hand.high} suit="s" />
-          <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
-        </div>
-      </div>
 
-      {SEATS.map((seat) => {
-        const isHero = seat === heroPosition;
-        const layout = SEAT_LAYOUT[seat];
-        return (
-          <div
-            key={seat}
-            className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
-            style={{ top: layout.top, left: layout.left }}
-          >
-            {seat === "BTN" && (
-              <span className="absolute -right-3 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 shadow">
-                D
-              </span>
-            )}
-            {!isHero && (
-              <div className="flex gap-0.5">
-                <span className="h-6 w-4 rounded-sm bg-slate-700" />
-                <span className="h-6 w-4 rounded-sm bg-slate-700" />
-              </div>
-            )}
+        {getTableSeats(heroPosition).map(({ seat, top, left }) => {
+          const isHero = seat === heroPosition;
+          return (
             <div
-              className={`flex flex-col items-center rounded-full border px-3 py-1 text-center ${
-                isHero
-                  ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
-                  : "border-slate-700 bg-slate-900/80 text-slate-400"
-              }`}
+              key={seat}
+              className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
+              style={{ top, left }}
             >
-              <span className="text-[11px] font-bold leading-tight">{seat}</span>
-              <span className="text-[10px] leading-tight tabular-nums">{SEAT_STACK[seat]}</span>
+              {seat === "BTN" && (
+                <span className="absolute -right-3 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-900 shadow">
+                  D
+                </span>
+              )}
+
+              {isHero ? (
+                <div className="mb-0.5 flex">
+                  <div className="-mr-2 rotate-[-8deg]">
+                    <Card rank={hand.high} suit="s" />
+                  </div>
+                  <div className="rotate-[8deg]">
+                    <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-0.5">
+                  <span className="h-6 w-4 rounded-sm bg-slate-700" />
+                  <span className="h-6 w-4 rounded-sm bg-slate-700" />
+                </div>
+              )}
+
+              <div
+                className={`flex flex-col items-center rounded-full border px-3 py-1 text-center ${
+                  isHero
+                    ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
+                    : "border-slate-700 bg-slate-900/80 text-slate-400"
+                }`}
+              >
+                <span className="text-[11px] font-bold leading-tight">{seat}</span>
+                <span className="text-[10px] leading-tight tabular-nums">{SEAT_STACK[seat]}</span>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

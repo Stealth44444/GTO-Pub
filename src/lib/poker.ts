@@ -20,15 +20,29 @@ export const SEAT_LABEL: Record<Seat, string> = {
   BB: "BB (빅 블라인드)",
 };
 
-// 오벌 테이블 위 좌석 좌표 (컨테이너 기준 %, translate(-50%,-50%)로 중심 정렬)
-export const SEAT_LAYOUT: Record<Seat, { top: string; left: string }> = {
-  CO: { top: "4%", left: "50%" },
-  HJ: { top: "22%", left: "15%" },
-  BTN: { top: "22%", left: "85%" },
-  UTG: { top: "64%", left: "12%" },
-  SB: { top: "64%", left: "88%" },
-  BB: { top: "84%", left: "50%" },
+// 오벌 테이블 위 좌석 슬롯 좌표 (컨테이너 기준 %, translate(-50%,-50%)로 중심 정렬).
+// GTOWizard 트레이너처럼 히어로는 항상 bottom 슬롯에 고정하고, 나머지 포지션을
+// 히어로 기준 시계방향 순서로 회전 배치한다 (getTableSeats 참고).
+type SlotKey = "bottom" | "leftLower" | "leftUpper" | "top" | "rightUpper" | "rightLower";
+
+const SLOT_ORDER: SlotKey[] = ["bottom", "leftLower", "leftUpper", "top", "rightUpper", "rightLower"];
+
+export const SLOT_LAYOUT: Record<SlotKey, { top: string; left: string }> = {
+  bottom: { top: "84%", left: "50%" },
+  leftLower: { top: "64%", left: "12%" },
+  leftUpper: { top: "22%", left: "15%" },
+  top: { top: "4%", left: "50%" },
+  rightUpper: { top: "22%", left: "85%" },
+  rightLower: { top: "64%", left: "88%" },
 };
+
+export function getTableSeats(heroPosition: Position): { seat: Seat; top: string; left: string }[] {
+  const heroIdx = SEATS.indexOf(heroPosition);
+  return SLOT_ORDER.map((slot, i) => {
+    const seat = SEATS[(heroIdx + i) % SEATS.length];
+    return { seat, ...SLOT_LAYOUT[slot] };
+  });
+}
 
 const STACK_BASE = 200;
 

@@ -1,16 +1,14 @@
-const SUIT_INFO = {
-  s: { symbol: "♠", color: "text-slate-900" },
-  h: { symbol: "♥", color: "text-red-600" },
-} as const;
+const SUIT_GLYPH = { s: "♠", h: "♥" } as const;
 
-export type Suit = keyof typeof SUIT_INFO;
+export type Suit = keyof typeof SUIT_GLYPH;
 
 export default function Card({ rank, suit }: { rank: string; suit: Suit }) {
-  const info = SUIT_INFO[suit];
   return (
-    <div className="flex h-24 w-16 flex-col items-center justify-center rounded-lg bg-white text-2xl shadow-lg shadow-black/30 sm:h-32 sm:w-20 sm:text-3xl">
-      <span className={`font-bold ${info.color}`}>{rank}</span>
-      <span className={info.color}>{info.symbol}</span>
+    <div className="relative flex h-14 w-10 flex-col items-center justify-center rounded-md bg-emerald-600 shadow-lg shadow-black/40 sm:h-16 sm:w-11">
+      <span className="absolute right-1 top-0.5 text-[9px] leading-none text-white/70">
+        {SUIT_GLYPH[suit]}
+      </span>
+      <span className="text-xl font-extrabold leading-none text-white sm:text-2xl">{rank}</span>
     </div>
   );
 }
