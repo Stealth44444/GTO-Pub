@@ -73,9 +73,16 @@ export default function PokerTable({
           const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
           const posted = postedBlind(tableSize, seat, anteBb);
           const seatStack = stackBb - posted;
-          // 칩은 테이블 중앙(팟) 쪽에 붙인다. 좌표가 왼쪽 절반이면 오른쪽에,
-          // 오른쪽 절반이면 왼쪽에 놓아야 안쪽을 향한다.
-          const chipsInside = parseFloat(left) < 50 ? "left-full ml-1" : "right-full mr-1";
+          // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
+          // 향하는 방향으로 밀어내면 위아래 좌석도 옆이 아니라 앞에 놓인다.
+          // top은 높이 기준 %, left는 너비 기준 %라 가로 성분에 비율을 곱해야
+          // 화면상의 실제 방향이 된다.
+          const towardPotX = (50 - parseFloat(left)) * aspect;
+          const towardPotY = TABLE_FELT.top + TABLE_FELT.height / 2 - parseFloat(top);
+          const reach = Math.hypot(towardPotX, towardPotY) || 1;
+          // 좌석 원 반지름이 28~32px이므로 그보다 넉넉히 떨어뜨려 붙지 않게 한다.
+          const chipX = (towardPotX / reach) * 48;
+          const chipY = (towardPotY / reach) * 48;
           return (
             <div
               key={seat}
@@ -99,7 +106,12 @@ export default function PokerTable({
 
               {posted > 0 && (
                 <span
-                  className={`absolute top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-[var(--gw-bg)]/90 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-[var(--gw-text-secondary)] ring-1 ring-[var(--gw-border)] ${chipsInside}`}
+                  className="absolute z-10 flex items-center gap-1 whitespace-nowrap text-[9px] font-bold tabular-nums text-[var(--gw-text-secondary)]"
+                  style={{
+                    left: `calc(50% + ${chipX}px)`,
+                    top: `calc(50% + ${chipY}px)`,
+                    transform: "translate(-50%, -50%)",
+                  }}
                 >
                   <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
                   {posted}
