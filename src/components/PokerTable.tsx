@@ -9,7 +9,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
       <div className="relative mx-auto h-full w-full max-w-sm px-2">
         {/* 테이블 펠트 — GTOWizard의 --table-radius: 999px는 완전한 타원이 아니라
             좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라 채움 없이 외곽선만 사용 */}
-        <div className="absolute left-[14%] top-[13%] h-[60%] w-[72%] rounded-[999px] border-2 border-[var(--gw-surface-3)]" />
+        <div className="absolute left-[8%] top-[6%] h-[84%] w-[84%] rounded-[999px] border-2 border-[var(--gw-surface-3)]" />
 
         {/* 팟 표시 (테이블 중앙) */}
         <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-slate-400">
