@@ -6,6 +6,12 @@ const SUIT_PATH: Record<Suit, string> = {
   h: "M12 21s-7-4.35-9.5-8.5C.5 9 2 5.5 5.5 5.5c2 0 3.5 1.2 4.5 2.7 1-1.5 2.5-2.7 4.5-2.7 3.5 0 5 3.5 3 7C19 16.65 12 21 12 21z",
 };
 
+// 슈트별 심볼 색상 (검정 계열 = 스페이드/클럽 대용, 빨강 계열 = 하트/다이아 대용)
+const SUIT_COLOR: Record<Suit, string> = {
+  s: "text-black/55",
+  h: "text-red-600/70",
+};
+
 function SuitIcon({ suit, className }: { suit: Suit; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
@@ -16,9 +22,11 @@ function SuitIcon({ suit, className }: { suit: Suit; className?: string }) {
 
 export default function Card({ rank, suit }: { rank: string; suit: Suit }) {
   return (
-    <div className="flex h-14 w-10 flex-col items-center justify-center gap-0.5 rounded-lg bg-emerald-600 shadow-lg shadow-black/40 sm:h-16 sm:w-11">
-      <SuitIcon suit={suit} className="h-2.5 w-2.5 text-white/70" />
-      <span className="text-xl font-extrabold leading-none text-white sm:text-2xl">{rank}</span>
+    <div className="relative flex h-14 w-10 items-center justify-center rounded-md bg-emerald-600 shadow-lg shadow-black/40 sm:h-16 sm:w-11">
+      <SuitIcon suit={suit} className={`absolute inset-[15%] ${SUIT_COLOR[suit]}`} />
+      <span className="relative z-10 text-xl font-extrabold leading-none text-white sm:text-2xl">
+        {rank}
+      </span>
     </div>
   );
 }
