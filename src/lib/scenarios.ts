@@ -172,6 +172,23 @@ export function solutionFor(
 }
 
 /**
+ * 각 액션의 EV(bb). 푸시/폴드는 폴드를 0으로 두고 올인의 EV를 그 상대값으로 준다
+ * (해설 패널이 "폴드 0 EV / 올인 -0.38 EV"처럼 나란히 보여주기 위한 값).
+ * 아직 계산된 데이터가 없는 모드는 null.
+ */
+export function actionEvFor(
+  mode: ModeId,
+  situation: Situation,
+  handCode: string,
+): Partial<Record<ActionId, number>> | null {
+  if (mode !== "pushfold") return null;
+  const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
+  const ev = spot?.shoveEvBb?.[handCode];
+  if (ev === undefined) return null;
+  return { fold: 0, shove: ev };
+}
+
+/**
  * 고른 액션이 최선 대비 잃는 EV(bb). 최선을 골랐으면 0.
  * 빈도와 달리 "얼마나" 틀렸는지를 재는 값이라, 기록과 채점의 기준이 된다.
  * 아직 계산된 데이터가 없는 모드는 null.
