@@ -44,6 +44,13 @@ export function getTableSeats(heroPosition: Position): { seat: Seat; top: string
   });
 }
 
+// 히어로가 레이즈 퍼스트 인(RFI) 하는 스팟이므로, 액션 순서상 히어로보다 앞선
+// 포지션은 전부 폴드했다고 가정한다 (카드를 보여주지 않음). 히어로 뒤 포지션은
+// 아직 액션 전이라 카드 뒷면을 보여준다.
+export function isFoldedBeforeHero(seat: Seat, heroPosition: Position): boolean {
+  return SEATS.indexOf(seat) < SEATS.indexOf(heroPosition);
+}
+
 const STACK_BASE = 200;
 
 // 블라인드 포스트 반영한 프리플랍 시작 스택 (표시용)

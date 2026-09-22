@@ -1,4 +1,11 @@
-import { getTableSeats, SEAT_STACK, PREFLOP_POT, type HandInfo, type Position } from "@/lib/poker";
+import {
+  getTableSeats,
+  isFoldedBeforeHero,
+  SEAT_STACK,
+  PREFLOP_POT,
+  type HandInfo,
+  type Position,
+} from "@/lib/poker";
 import Card from "./Card";
 
 export default function PokerTable({ heroPosition, hand }: { heroPosition: Position; hand: HandInfo }) {
@@ -19,6 +26,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
 
         {getTableSeats(heroPosition).map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
+          const folded = !isHero && isFoldedBeforeHero(seat, heroPosition);
           return (
             <div
               key={seat}
@@ -40,22 +48,28 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                     <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
                   </div>
                 </div>
-              ) : (
+              ) : !folded ? (
                 <div className="flex gap-0.5">
                   <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
                   <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
                 </div>
+              ) : (
+                <div className="h-6" />
               )}
 
               <div
-                className={`flex flex-col items-center rounded-full border px-3 py-1 text-center ${
+                className={`flex h-16 w-16 flex-col items-center justify-center rounded-full border text-center sm:h-20 sm:w-20 ${
                   isHero
                     ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
-                    : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-slate-400"
+                    : folded
+                      ? "border-[var(--gw-surface-2)] bg-transparent text-slate-600"
+                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-slate-400"
                 }`}
               >
-                <span className="text-[11px] font-bold leading-tight">{seat}</span>
-                <span className="text-[10px] leading-tight tabular-nums">{SEAT_STACK[seat]}</span>
+                <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
+                <span className="text-[10px] leading-tight tabular-nums sm:text-xs">
+                  {folded ? "폴드" : SEAT_STACK[seat]}
+                </span>
               </div>
             </div>
           );
