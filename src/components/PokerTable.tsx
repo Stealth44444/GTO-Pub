@@ -74,8 +74,8 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                   isHero
                     ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
                     : folded
-                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
-                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-[var(--gw-surface-2)]"
+                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-[var(--gw-surface-3)]"
                 }`}
               >
                 <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
