@@ -3,7 +3,7 @@ import { getActionFrequency, type Position } from "./poker";
 
 // 학습 카테고리는 "무엇을 배우나"이고, 인원·스택은 "어떤 조건에서"다.
 // 둘은 별개 축이라, 조합이 늘어나도 카테고리는 늘지 않는다.
-export type ModeId = "pushfold" | "rfi";
+export type ModeId = "pushfold" | "rfi" | "vsopen" | "postflop" | "icm";
 
 export type ActionId = "shove" | "open" | "fold";
 
@@ -29,6 +29,27 @@ export const MODES: ModeInfo[] = [
     summary: "깊은 스택에서 첫 번째로 레이즈할 핸드를 고릅니다.",
     available: false,
     unavailableReason: "레인지 데이터 검증 중입니다",
+  },
+  {
+    id: "vsopen",
+    title: "오픈 대응",
+    summary: "앞에서 레이즈가 들어왔을 때 3벳·콜·폴드를 고릅니다.",
+    available: false,
+    unavailableReason: "레인지 데이터 계산 전입니다",
+  },
+  {
+    id: "postflop",
+    title: "플랍 이후 판단",
+    summary: "보드가 깔린 뒤 벳·체크·폴드를 고릅니다.",
+    available: false,
+    unavailableReason: "레인지 데이터 계산 전입니다",
+  },
+  {
+    id: "icm",
+    title: "ICM 버블 판단",
+    summary: "상금권 직전, 칩이 아니라 상금 기준으로 판단합니다.",
+    available: false,
+    unavailableReason: "레인지 데이터 계산 전입니다",
   },
 ];
 
@@ -139,8 +160,13 @@ export function solutionFor(
     const shove = Math.round((spot?.shove[handCode] ?? 0) * 100);
     return { shove, fold: 100 - shove };
   }
-  const freq = getActionFrequency(situation.position as Position, handCode);
-  return { open: freq.open, fold: freq.fold };
+  if (mode === "rfi") {
+    const freq = getActionFrequency(situation.position as Position, handCode);
+    return { open: freq.open, fold: freq.fold };
+  }
+  // 준비 중인 모드. 메뉴에서 시작이 막혀 있어 여기 닿지 않지만,
+  // 다른 모드의 정답을 잘못 돌려주느니 빈 값을 낸다.
+  return {};
 }
 
 /** 이 스팟의 계산 오차(bb). 데이터 신뢰도를 사용자에게 보여주기 위한 값이다. */
