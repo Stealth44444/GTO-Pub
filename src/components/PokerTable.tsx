@@ -70,7 +70,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
               )}
 
               <div
-                className={`flex h-full w-full flex-col items-center justify-center rounded-full border-2 text-center ${
+                className={`flex h-full w-full flex-col items-center justify-center rounded-full border-[3px] text-center ${
                   isHero
                     ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
                     : folded

@@ -16,8 +16,8 @@ function SuitIcon({ suit, className }: { suit: Suit; className?: string }) {
 
 export default function Card({ rank, suit }: { rank: string; suit: Suit }) {
   return (
-    <div className="relative flex h-14 w-10 flex-col items-center justify-center rounded-md bg-emerald-600 shadow-lg shadow-black/40 sm:h-16 sm:w-11">
-      <SuitIcon suit={suit} className="absolute right-1 top-1 h-2.5 w-2.5 text-white/70" />
+    <div className="flex h-14 w-10 flex-col items-center justify-center gap-0.5 rounded-lg bg-emerald-600 shadow-lg shadow-black/40 sm:h-16 sm:w-11">
+      <SuitIcon suit={suit} className="h-2.5 w-2.5 text-white/70" />
       <span className="text-xl font-extrabold leading-none text-white sm:text-2xl">{rank}</span>
     </div>
   );

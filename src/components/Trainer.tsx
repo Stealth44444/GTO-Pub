@@ -119,7 +119,7 @@ export default function Trainer() {
           <button
             type="button"
             onClick={() => answer("fold")}
-            className="rounded-2xl bg-[var(--gw-surface-3)] py-4 text-xl font-bold text-slate-100 transition active:scale-95"
+            className="rounded-2xl bg-rose-600 py-4 text-xl font-bold text-white transition active:scale-95"
           >
             폴드
           </button>
