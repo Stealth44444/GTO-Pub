@@ -47,13 +47,9 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
             >
               <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
                 {isHero ? (
-                  <div className="flex">
-                    <div className="-mr-2 rotate-[-8deg]">
-                      <Card rank={hand.high} suit="s" />
-                    </div>
-                    <div className="rotate-[8deg]">
-                      <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
-                    </div>
+                  <div className="flex gap-1">
+                    <Card rank={hand.high} suit="s" />
+                    <Card rank={hand.low} suit={hand.suited ? "s" : "h"} />
                   </div>
                 ) : !folded ? (
                   <div className="flex gap-0.5">
