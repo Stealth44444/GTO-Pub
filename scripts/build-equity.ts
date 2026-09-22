@@ -176,25 +176,29 @@ function main() {
   writeFileSync("scripts/data/equity.json", JSON.stringify(output));
   console.log(`저장: scripts/data/equity.json`);
 
-  // 검증: 널리 인용되는 매치업과 대조
+  // 검증: scripts/verify-exact.ts로 보드를 전수 열거해 구한 참값과 대조한다.
+  // 기억이나 2차 출처가 아니라 우리가 직접 계산한 정확값이다.
   const index = new Map(hands.map((h, i) => [h.code, i]));
   const checks: [string, string, number][] = [
-    ["AA", "KK", 0.82],
-    ["AA", "72o", 0.875],
-    ["AKs", "QQ", 0.46],
-    ["AKo", "QQ", 0.43],
-    ["AKo", "22", 0.47],
-    ["JTs", "AKo", 0.42],
+    ["AA", "KK", 0.81946],
+    ["AA", "72o", 0.882],
+    ["AKs", "QQ", 0.46049],
+    ["AKo", "QQ", 0.43242],
+    ["AKo", "22", 0.47351],
+    ["JTs", "AKo", 0.40514],
   ];
-  console.log("\n검증 (널리 인용되는 값과 대조):");
-  for (const [a, b, expected] of checks) {
+  console.log("\n검증 (전수 열거로 구한 참값과 대조):");
+  let worst = 0;
+  for (const [a, b, exact] of checks) {
     const got = table[index.get(a)! * n + index.get(b)!];
-    const diff = Math.abs(got - expected) * 100;
-    const mark = diff < 1.5 ? "OK" : "확인필요";
+    const diff = Math.abs(got - exact) * 100;
+    worst = Math.max(worst, diff);
+    const mark = diff < 0.3 ? "OK" : "확인필요";
     console.log(
-      `  ${a.padEnd(4)} vs ${b.padEnd(4)}  계산 ${(got * 100).toFixed(1)}%  통상 ${(expected * 100).toFixed(1)}%  차이 ${diff.toFixed(1)}%p  ${mark}`,
+      `  ${a.padEnd(4)} vs ${b.padEnd(4)}  계산 ${(got * 100).toFixed(3)}%  참값 ${(exact * 100).toFixed(3)}%  차이 ${diff.toFixed(3)}%p  ${mark}`,
     );
   }
+  console.log(`  최대 오차 ${worst.toFixed(3)}%p`);
 }
 
 main();
