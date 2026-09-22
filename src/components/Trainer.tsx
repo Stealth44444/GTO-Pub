@@ -36,7 +36,7 @@ function foldedBefore(situation: Situation): string[] {
   return names.slice(0, names.indexOf(situation.position));
 }
 
-export default function Trainer({ scenario, onExit }: { scenario: Scenario; onExit: () => void }) {
+export default function Trainer({ scenario }: { scenario: Scenario }) {
   const [round, setRound] = useState<Round>(() => nextRound(scenario));
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [stats, setStats] = useState({ attempts: 0, correct: 0, streak: 0 });
@@ -95,20 +95,10 @@ export default function Trainer({ scenario, onExit }: { scenario: Scenario; onEx
 
   return (
     <div
-      className="relative flex min-h-dvh flex-1 flex-col select-none overflow-hidden"
-      style={{
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
+      className="relative flex h-full flex-col select-none overflow-hidden"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 bg-[var(--gw-bg)]/90 px-2 backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={onExit}
-          className="shrink-0 rounded-[var(--gw-radius-control)] bg-[var(--gw-surface-2)] px-2.5 py-1.5 text-xs font-bold text-[var(--gw-text-secondary)] transition active:scale-95"
-        >
-          ← 메뉴
-        </button>
+      <div className="absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 bg-[var(--gw-bg)]/90 px-3 backdrop-blur-sm">
         <div
           ref={historyRef}
           className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none]"
@@ -145,7 +135,7 @@ export default function Trainer({ scenario, onExit }: { scenario: Scenario; onEx
       </div>
 
       <div
-        className={`grid gap-3 px-4 pb-6 ${feedback ? "invisible" : ""}`}
+        className={`grid gap-3 px-4 pb-4 ${feedback ? "invisible" : ""}`}
         style={{ gridTemplateColumns: `repeat(${situation.actions.length}, minmax(0, 1fr))` }}
         aria-hidden={Boolean(feedback)}
       >
@@ -167,7 +157,7 @@ export default function Trainer({ scenario, onExit }: { scenario: Scenario; onEx
       </div>
 
       {feedback && (
-        <section className="absolute inset-x-0 bottom-0 z-30 max-h-[78dvh] overflow-y-auto border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 pb-3 pt-5 shadow-[0_-18px_40px_rgba(0,0,0,0.42)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]">
+        <section className="absolute inset-x-0 bottom-0 z-30 max-h-full overflow-y-auto border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 pb-3 pt-5 shadow-[0_-18px_40px_rgba(0,0,0,0.42)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]">
           <div className="mx-auto flex max-w-sm flex-col items-center">
             <div
               className={`flex h-24 w-24 items-center justify-center rounded-full border-[6px] bg-[var(--gw-bg)] ${

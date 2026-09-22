@@ -4,8 +4,8 @@
   "description": "홀덤펍 유저를 위한 프리플랍 오픈/폴드 트레이너",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {
