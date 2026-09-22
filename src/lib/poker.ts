@@ -179,7 +179,9 @@ export interface HandInfo {
   combos: number;
 }
 
-export type Action = "open" | "fold";
+// 푸시/폴드의 올인은 딥스택 오픈레이즈와 다른 액션이다. 기록에서 둘을 구분해야
+// 나중에 분석할 수 있다 (scenarios.ts의 ActionId와 같은 집합).
+export type Action = "shove" | "open" | "fold";
 
 export type ActionFrequency = {
   open: number;

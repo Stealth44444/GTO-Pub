@@ -157,6 +157,40 @@ function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solu
   return { shove, calls };
 }
 
+// 히어로가 올인했을 때의 EV(폴드 대비, bb). 폴드의 EV가 0이므로 이 값이 곧
+// 두 액션의 EV 차이다. 양수면 올인이, 음수면 폴드가 낫고, 절댓값이 틀렸을 때
+// 잃는 bb다. 앱의 채점과 ev_loss_bb 기록이 이 값을 쓴다.
+function shoveEvByHand(spot: Spot, sol: Solution): Float64Array {
+  const posted = postedByseat(spot.tableSize, spot.anteBb);
+  const totalPosted = posted.reduce((a, b) => a + b, 0);
+  const heroPosted = posted[spot.heroSeat];
+  const behind: number[] = [];
+  for (let s = spot.heroSeat + 1; s < spot.tableSize; s++) behind.push(s);
+
+  const risked = spot.stackBb - heroPosted;
+  const deadMoney = totalPosted - heroPosted;
+  const freqs = sol.calls.map(rangeFrequency);
+
+  const firstCaller = new Array(behind.length).fill(0);
+  let survive = 1;
+  for (let k = 0; k < behind.length; k++) {
+    firstCaller[k] = survive * freqs[k];
+    survive *= 1 - freqs[k];
+  }
+
+  const ev = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let e = survive * deadMoney;
+    for (let k = 0; k < behind.length; k++) {
+      if (firstCaller[k] === 0) continue;
+      const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalPosted);
+      e += firstCaller[k] * (equityVsRange(i, sol.calls[k]) * pot - risked);
+    }
+    ev[i] = e;
+  }
+  return ev;
+}
+
 // 최적 대응 대비 손실(bb/핸드). 0에 가까울수록 균형에 가깝다.
 function exploitability(spot: Spot, sol: Solution): number {
   const posted = postedByseat(spot.tableSize, spot.anteBb);
@@ -235,6 +269,7 @@ function main() {
         const spot: Spot = { stackBb, tableSize, heroSeat, anteBb };
         const sol = solve(spot);
         const expl = exploitability(spot, sol);
+        const ev = shoveEvByHand(spot, sol);
         worstExploit = Math.max(worstExploit, expl);
         const freq = rangeFrequency(sol.shove) * 100;
         row.push(`${freq.toFixed(1)}%`.padStart(6));
@@ -251,6 +286,8 @@ function main() {
               ([, v]) => (v as number) >= 0.005,
             ),
           ),
+          // 전 핸드를 담는다. 어떤 핸드가 나와도 채점해야 하므로 걸러낼 수 없다.
+          shoveEvBb: Object.fromEntries(HANDS.map((h, i) => [h, Number(ev[i].toFixed(3))])),
         });
       }
 

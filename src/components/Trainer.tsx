@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { randomHand, seatNames, type HandInfo } from "@/lib/poker";
 import {
   ACTION_LABEL,
+  evLossFor,
   exploitabilityFor,
   randomSituation,
   solutionFor,
@@ -71,13 +72,20 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
       const best = round.situation.actions.reduce((a, b) =>
         (solution[a] ?? 0) >= (solution[b] ?? 0) ? a : b,
       );
+      // 스팟 전체를 남긴다. position과 hand_code만으로는 9인 8bb였는지
+      // 6인 20bb였는지 알 수 없어 기록을 나중에 해석할 수 없다.
       void logAttempt({
         userId: guestId,
+        mode: scenario.mode,
+        tableSize: round.situation.tableSize,
+        stackBb: round.situation.stackBb,
+        anteBb: round.situation.anteBb,
         position: round.situation.position,
         handCode: round.hand.code,
-        userAction: action === "fold" ? "fold" : "open",
-        correctAction: best === "fold" ? "fold" : "open",
+        userAction: action,
+        correctAction: best,
         selectedFrequency: chosen,
+        evLossBb: evLossFor(scenario.mode, round.situation, round.hand.code, action) ?? undefined,
       });
     },
     [feedback, round, scenario.mode, guestId],

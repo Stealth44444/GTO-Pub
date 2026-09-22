@@ -61,6 +61,8 @@ type PushfoldSpot = {
   shoveFrequencyPct: number;
   exploitabilityBb: number;
   shove: Record<string, number>;
+  /** 올인의 EV(폴드 대비, bb). 폴드 EV가 0이라 이 값이 두 액션의 EV 차이다. */
+  shoveEvBb: Record<string, number>;
 };
 
 // 스팟마다 shove의 키 집합이 달라서 TS는 JSON을 선택적 프로퍼티 유니온으로 추론한다.
@@ -167,6 +169,27 @@ export function solutionFor(
   // 준비 중인 모드. 메뉴에서 시작이 막혀 있어 여기 닿지 않지만,
   // 다른 모드의 정답을 잘못 돌려주느니 빈 값을 낸다.
   return {};
+}
+
+/**
+ * 고른 액션이 최선 대비 잃는 EV(bb). 최선을 골랐으면 0.
+ * 빈도와 달리 "얼마나" 틀렸는지를 재는 값이라, 기록과 채점의 기준이 된다.
+ * 아직 계산된 데이터가 없는 모드는 null.
+ */
+export function evLossFor(
+  mode: ModeId,
+  situation: Situation,
+  handCode: string,
+  action: ActionId,
+): number | null {
+  if (mode !== "pushfold") return null;
+  const spot = findSpot(situation.tableSize, situation.stackBb, situation.position);
+  // JSON은 unknown을 거쳐 단언하므로 타입이 런타임 모양을 보증하지 않는다.
+  const ev = spot?.shoveEvBb?.[handCode];
+  if (ev === undefined) return null;
+  if (action === "shove") return ev >= 0 ? 0 : Number((-ev).toFixed(4));
+  if (action === "fold") return ev <= 0 ? 0 : Number(ev.toFixed(4));
+  return null;
 }
 
 /** 이 스팟의 계산 오차(bb). 데이터 신뢰도를 사용자에게 보여주기 위한 값이다. */
