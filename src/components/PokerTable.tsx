@@ -71,7 +71,11 @@ export default function PokerTable({
         {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
           const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
-          const seatStack = stackBb - postedBlind(tableSize, seat, anteBb);
+          const posted = postedBlind(tableSize, seat, anteBb);
+          const seatStack = stackBb - posted;
+          // 칩은 테이블 중앙(팟) 쪽에 붙인다. 좌표가 왼쪽 절반이면 오른쪽에,
+          // 오른쪽 절반이면 왼쪽에 놓아야 안쪽을 향한다.
+          const chipsInside = parseFloat(left) < 50 ? "left-full ml-1" : "right-full mr-1";
           return (
             <div
               key={seat}
@@ -92,6 +96,15 @@ export default function PokerTable({
                   </div>
                 ) : null}
               </div>
+
+              {posted > 0 && (
+                <span
+                  className={`absolute top-1/2 z-10 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-[var(--gw-bg)]/90 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-[var(--gw-text-secondary)] ring-1 ring-[var(--gw-border)] ${chipsInside}`}
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
+                  {posted}
+                </span>
+              )}
 
               {seat === "BTN" && (
                 <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--gw-text-primary)] text-[10px] font-bold text-[var(--gw-bg)] shadow">
