@@ -7,8 +7,8 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
   return (
     <div className="absolute inset-0">
       <div className="relative mx-auto h-full w-full max-w-sm px-2">
-        {/* 테이블 펠트 */}
-        <div className="absolute left-[14%] top-[13%] h-[60%] w-[72%] rounded-[50%] border-2 border-slate-700/50 bg-slate-900/40" />
+        {/* 테이블 펠트 — GTOWizard도 --clr-table-back: transparent라 채움 없이 외곽선만 사용 */}
+        <div className="absolute left-[14%] top-[13%] h-[60%] w-[72%] rounded-[50%] border-2 border-[var(--gw-surface-3)]" />
 
         {/* 팟 표시 (테이블 중앙) */}
         <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-slate-400">
@@ -41,8 +41,8 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                 </div>
               ) : (
                 <div className="flex gap-0.5">
-                  <span className="h-6 w-4 rounded-sm bg-slate-700" />
-                  <span className="h-6 w-4 rounded-sm bg-slate-700" />
+                  <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
+                  <span className="h-6 w-4 rounded-sm bg-[var(--gw-surface-3)]" />
                 </div>
               )}
 
@@ -50,7 +50,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
                 className={`flex flex-col items-center rounded-full border px-3 py-1 text-center ${
                   isHero
                     ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
-                    : "border-slate-700 bg-slate-900/80 text-slate-400"
+                    : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-slate-400"
                 }`}
               >
                 <span className="text-[11px] font-bold leading-tight">{seat}</span>

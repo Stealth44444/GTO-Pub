@@ -5,6 +5,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root {
+  /* GTOWizard 실제 CSS 번들(app.gtowizard.com)에서 확인한 값 그대로 사용 */
+  --gw-bg: #121212; /* --clr-black-0 / --app-surface-1, body 배경 */
+  --gw-surface-1: #1e1e1e; /* --clr-black-1 */
+  --gw-surface-2: #1f1f1f; /* --app-surface-2 */
+  --gw-surface-3: #292929; /* --app-surface-3 */
+  --gw-table-header: #161616; /* --app-surface-table */
+}
+
 html {
   /* 펍 환경(어두운 조명)을 고려한 고정 다크 테마, 모바일 바운스 스크롤 방지 */
   color-scheme: dark;

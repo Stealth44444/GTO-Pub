@@ -29,7 +29,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#0f172a",
+  themeColor: "#121212",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 overscroll-none">
+      <body className="min-h-full flex flex-col bg-[var(--gw-bg)] text-slate-100 overscroll-none">
         {children}
       </body>
     </html>

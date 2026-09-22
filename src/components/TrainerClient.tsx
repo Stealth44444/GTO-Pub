@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 const Trainer = dynamic(() => import("@/components/Trainer"), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-dvh flex-1 items-center justify-center bg-slate-950">
+    <div className="flex min-h-dvh flex-1 items-center justify-center bg-[var(--gw-bg)]">
       <span className="text-slate-400">불러오는 중...</span>
     </div>
   ),

@@ -76,42 +76,50 @@ export default function Trainer() {
     >
       <div className="flex items-start justify-between gap-2 px-3 pt-3">
         <div className="flex items-center gap-2 text-[11px] tabular-nums text-slate-400">
-          <span className="rounded-full bg-slate-800 px-2.5 py-1 font-medium text-slate-200">
+          <span className="rounded-full bg-[var(--gw-surface-2)] px-2.5 py-1 font-medium text-slate-200">
             정확도 {accuracy}%
           </span>
-          <span className="rounded-full bg-slate-800 px-2.5 py-1 font-medium text-slate-200">
+          <span className="rounded-full bg-[var(--gw-surface-2)] px-2.5 py-1 font-medium text-slate-200">
             연속 {stats.streak}
           </span>
         </div>
-        <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-1.5 text-right">
-          <div className="text-xs font-bold leading-tight text-emerald-300">
-            {POSITION_LABEL[round.position]}
+        {feedback ? (
+          <div
+            className={`rounded-xl border px-3 py-1.5 text-right ${
+              isCorrect ? "border-emerald-400/60 bg-emerald-500/10" : "border-rose-400/60 bg-rose-500/10"
+            }`}
+          >
+            <div
+              className={`text-xs font-bold leading-tight ${isCorrect ? "text-emerald-300" : "text-rose-300"}`}
+            >
+              {isCorrect ? "정답" : "오답"}
+            </div>
+            <div
+              className={`text-[10px] leading-tight ${isCorrect ? "text-emerald-400/80" : "text-rose-400/80"}`}
+            >
+              {isCorrect ? "탭해서 다음 핸드" : `정답: ${feedback.correct === "open" ? "오픈" : "폴드"} · 탭해서 다음`}
+            </div>
           </div>
-          <div className="text-[10px] leading-tight text-emerald-400/80">행동을 선택해 주세요</div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-1.5 text-right">
+            <div className="text-xs font-bold leading-tight text-emerald-300">
+              {POSITION_LABEL[round.position]}
+            </div>
+            <div className="text-[10px] leading-tight text-emerald-400/80">행동을 선택해 주세요</div>
+          </div>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1">
         <PokerTable heroPosition={round.position} hand={round.hand} />
       </div>
 
-      {feedback && (
-        <div
-          className={`mx-4 mb-4 rounded-xl px-4 py-3 text-center font-semibold ${
-            isCorrect ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
-          }`}
-        >
-          {isCorrect ? "정답!" : `오답 — 정답은 ${feedback.correct === "open" ? "오픈" : "폴드"}`}
-          <div className="mt-1 text-xs font-normal text-slate-400">화면을 탭하면 다음 핸드</div>
-        </div>
-      )}
-
       {!feedback && (
         <div className="grid grid-cols-2 gap-3 px-4 pb-6">
           <button
             type="button"
             onClick={() => answer("fold")}
-            className="rounded-2xl bg-slate-800 py-4 text-xl font-bold text-slate-100 transition active:scale-95"
+            className="rounded-2xl bg-[var(--gw-surface-3)] py-4 text-xl font-bold text-slate-100 transition active:scale-95"
           >
             폴드
           </button>
