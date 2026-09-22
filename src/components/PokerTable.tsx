@@ -15,7 +15,7 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
     <div className="absolute inset-0">
       <div className="relative mx-auto h-full w-full max-w-sm px-2">
         {/* 테이블 펠트 — GTOWizard의 --table-radius: 999px는 완전한 타원이 아니라
-            좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라 채움 없이 외곽선만 사용 */}
+            좌우는 직선, 위아래만 반원인 스타디움 형태. --clr-table-back: transparent라 채움 없이 외곽선만 사용. */}
         <div className="absolute left-[8%] top-[6%] h-[84%] w-[84%] rounded-[999px] border-2 border-[var(--gw-surface-3)]" />
 
         {/* 팟 표시 (테이블 중앙) */}
@@ -60,10 +60,10 @@ export default function PokerTable({ heroPosition, hand }: { heroPosition: Posit
               <div
                 className={`flex h-16 w-16 flex-col items-center justify-center rounded-full border text-center sm:h-20 sm:w-20 ${
                   isHero
-                    ? "border-emerald-400 bg-emerald-500/10 text-emerald-300"
+                    ? "border-emerald-400 bg-[var(--gw-table-header)] text-neutral-300"
                     : folded
-                      ? "border-[var(--gw-surface-2)] bg-transparent text-slate-600"
-                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-slate-400"
+                      ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
+                      : "border-[var(--gw-surface-3)] bg-[var(--gw-table-header)] text-neutral-300"
                 }`}
               >
                 <span className="text-xs font-bold leading-tight sm:text-sm">{seat}</span>
