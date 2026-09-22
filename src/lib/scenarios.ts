@@ -27,7 +27,7 @@ export const MODES: ModeInfo[] = [
   {
     id: "vsshove",
     title: "올인 대응",
-    summary: "앞에서 올인이 들어왔을 때, 콜할지 접을지 고릅니다.",
+    summary: "블라인드에서 올인을 받았을 때, 콜할지 접을지 고릅니다.",
     available: true,
   },
   {
@@ -157,11 +157,16 @@ export function randomSituation(scenario: Scenario): Situation {
 
   if (scenario.mode === "vsshove") {
     const stackBb = scenario.stackBb ?? pick(PUSHFOLD_STACKS);
-    // 올인한 사람과 히어로 쌍을 고른다. 올인은 BB 앞자리까지만 가능하고,
-    // 히어로는 그 뒤에 앉아 있어야 한다. 자리 이름은 솔버와 같은 규칙을 쓴다.
+    // 콜러는 블라인드만 다룬다. 이 모델의 콜 레인지는 사실상 "내가 마지막
+    // 액션자일 때"의 답이다 — 콜러 뒤에 남은 사람이 또 콜할 가능성을 무시하기
+    // 때문에, 뒤에 사람이 많을수록 실제보다 넓게 나온다. BB는 뒤에 아무도 없어
+    // 근사가 아니라 정확하고, SB는 BB 하나만 남아 오차가 작다. 그 밖의 자리는
+    // 9인 UTG1처럼 뒤에 여섯 명이 남기도 해서 가르칠 수 있는 값이 아니다.
+    // (블라인드 방어는 실제로도 가장 자주 마주치는 콜 스팟이다.)
     const names = seatNames(scenario.tableSize);
-    const shoverIdx = Math.floor(Math.random() * (names.length - 2));
-    const callerIdx = shoverIdx + 1 + Math.floor(Math.random() * (names.length - 1 - shoverIdx));
+    const callerIdx = Math.random() < 0.5 ? names.length - 1 : names.length - 2;
+    // 올인한 사람은 콜러보다 앞자리여야 한다.
+    const shoverIdx = Math.floor(Math.random() * callerIdx);
     return {
       tableSize: scenario.tableSize,
       stackBb,
