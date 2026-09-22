@@ -12,26 +12,6 @@ import {
 } from "@/lib/poker";
 import Card from "./Card";
 
-// 낸 금액이 클수록 칩을 높이 쌓는다. 숫자를 읽기 전에 크기가 먼저 보이게 하려는 것.
-function ChipStack({ amount }: { amount: number }) {
-  const tiers = amount < 1 ? 1 : amount < 3 ? 2 : amount < 10 ? 3 : 4;
-  return (
-    <span
-      className="relative shrink-0"
-      style={{ width: 11, height: 5 + (tiers - 1) * 3 }}
-      aria-hidden
-    >
-      {Array.from({ length: tiers }, (_, i) => (
-        <span
-          key={i}
-          className="absolute left-0 rounded-full border border-sky-200/60 bg-sky-400"
-          style={{ bottom: i * 3, width: 11, height: 5 }}
-        />
-      ))}
-    </span>
-  );
-}
-
 export default function PokerTable({
   tableSize,
   heroPosition,
@@ -112,8 +92,10 @@ export default function PokerTable({
           const towardPotY = TABLE_FELT.top + TABLE_FELT.height / 2 - parseFloat(top);
           const reach = Math.hypot(towardPotX, towardPotY) || 1;
           // 좌석 원 반지름이 28~32px이므로 그보다 넉넉히 떨어뜨려 붙지 않게 한다.
-          const chipX = (towardPotX / reach) * 62;
-          const chipY = (towardPotY / reach) * 62;
+          // 히어로는 자기 앞에 카드가 놓여 있어 팟 쪽으로 밀면 카드에 가린다.
+          // 그 자리만 옆으로 뺀다.
+          const chipX = isHero ? 46 : (towardPotX / reach) * 62;
+          const chipY = isHero ? 0 : (towardPotY / reach) * 62;
           return (
             <div
               key={seat}
@@ -121,7 +103,7 @@ export default function PokerTable({
               className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-16 sm:w-16"
               style={{ top, left }}
             >
-              <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
+              <div className="absolute bottom-full left-1/2 z-20 mb-1 flex -translate-x-1/2">
                 {isHero ? (
                   <div className="flex gap-1">
                     <Card rank={hand.high} suit={highSuit} />
@@ -144,7 +126,7 @@ export default function PokerTable({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <ChipStack amount={posted} />
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
                   {posted}bb
                 </span>
               )}
