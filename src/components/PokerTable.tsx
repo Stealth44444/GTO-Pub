@@ -72,8 +72,11 @@ export default function PokerTable({
           }}
         />
 
-        <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
-          <span className="h-2 w-2 rounded-full bg-sky-400" />
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-base font-bold tabular-nums text-[var(--gw-text-muted)]"
+          style={{ top: `${TABLE_FELT.top + TABLE_FELT.height / 2}%` }}
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
           POT {potBb}bb
         </div>
 
@@ -119,14 +122,14 @@ export default function PokerTable({
 
               {posted > 0 && (
                 <span
-                  className="absolute z-10 flex items-center gap-1 whitespace-nowrap text-[9px] font-bold tabular-nums text-[var(--gw-text-secondary)]"
+                  className="absolute z-10 flex items-center gap-1 whitespace-nowrap text-[11px] font-bold tabular-nums text-[var(--gw-text-secondary)]"
                   style={{
                     left: `calc(50% + ${chipX}px)`,
                     top: `calc(50% + ${chipY}px)`,
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
                   {posted}bb
                 </span>
               )}
