@@ -20,6 +20,11 @@ fn round3(v: f32) -> f64 {
     (v as f64 * 1000.0).round() / 1000.0
 }
 
+/// 빈도는 1% 해상도면 충분하다. 소수 3자리로 두면 파일이 20% 커지기만 한다.
+fn round2(v: f32) -> f64 {
+    (v as f64 * 100.0).round() / 100.0
+}
+
 /// 액션을 트리 형식의 {kind, amountBb}로. 금액은 "이 액션으로 추가로 넣는 칩"이다.
 ///
 /// Bet/Raise/AllIn의 인자는 그 스트릿 기준의 "얼마까지 올린다"는 값이다.
@@ -109,7 +114,7 @@ impl Exporter {
             "potBb": bb(pot),
             "handCount": hand_count,
             "actions": actions,
-            "strategy": strategy.iter().map(|v| round3(*v)).collect::<Vec<_>>(),
+            "strategy": strategy.iter().map(|v| round2(*v)).collect::<Vec<_>>(),
             "actionEv": action_ev.iter().map(|v| bb((*v * 10.0).round() as i32)).collect::<Vec<_>>(),
         }));
 
@@ -138,11 +143,24 @@ fn arg(name: &str, default: &str) -> String {
 
 fn main() {
     let flop_str = arg("--flop", "Td9d6h");
-    let turn_str = arg("--turn", "2c");
-    let river_str = arg("--river", "7s");
-    let out = arg("--out", "spot.json");
+    // 런아웃은 "턴+리버"를 붙여 쓰고 쉼표로 여러 개를 준다. 예: "2c7s,Kd4h"
+    // 비싼 건 솔브뿐이고 런아웃을 따라가며 뽑는 일은 싸다. 한 번 풀어 여러 개를
+    // 내보내면 보드를 늘리는 비용이 런아웃 수만큼 나눠진다.
+    let runouts_str = arg("--runouts", &format!("{}{}", arg("--turn", "2c"), arg("--river", "7s")));
+    let outdir = arg("--outdir", ".");
+    let tag = arg("--tag", "spot");
     let stack: i32 = arg("--stack", "200").parse().expect("--stack은 정수 칩");
     let pot: i32 = arg("--pot", "55").parse().expect("--pot은 정수 칩");
+
+    let runouts: Vec<(String, String)> = runouts_str
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            assert!(s.len() == 4, "런아웃은 턴+리버 4글자여야 한다: {s}");
+            (s[0..2].to_string(), s[2..4].to_string())
+        })
+        .collect();
 
     // BTN 오픈에 BB가 디펜스한 상황의 가정 레인지. 프리플랍 솔브가 서면 여기가 대체된다.
     let oop_range = "22+,A2s+,K5s+,Q7s+,J8s+,T8s+,97s+,86s+,75s+,64s+,53s+,A8o+,KTo+,QTo+,JTo";
@@ -195,37 +213,51 @@ fn main() {
         .map(|p| game.weights(p).iter().map(|w| round3(*w)).collect())
         .collect();
 
-    let mut ex = Exporter {
-        nodes: Vec::new(),
-        runout: [
-            card_from_str(&turn_str).unwrap(),
-            card_from_str(&river_str).unwrap(),
-        ],
-        starting_pot: pot,
-    };
-    ex.walk(&mut game, "", 0);
-
     let flop_cards: Vec<String> = flop_str
         .as_bytes()
         .chunks(2)
         .map(|c| String::from_utf8_lossy(c).to_string())
         .collect();
 
-    let spot = json!({
-        "flop": flop_cards,
-        "runout": { "turn": turn_str, "river": river_str },
-        "startingPotBb": bb(pot),
-        "effectiveStackBb": bb(stack),
-        "handsByPlayer": hands,
-        "handWeightsByPlayer": weights,
-        "nodes": ex.nodes,
-    });
+    std::fs::create_dir_all(&outdir).unwrap();
 
-    std::fs::write(&out, serde_json::to_string(&spot).unwrap()).unwrap();
-    let bytes = std::fs::metadata(&out).unwrap().len();
-    eprintln!(
-        "저장: {out} · 노드 {}개 · {:.2}MB",
-        ex.nodes.len(),
-        bytes as f64 / (1024.0 * 1024.0)
-    );
+    for (turn_str, river_str) in &runouts {
+        game.back_to_root();
+        let mut ex = Exporter {
+            nodes: Vec::new(),
+            runout: [
+                card_from_str(turn_str).unwrap(),
+                card_from_str(river_str).unwrap(),
+            ],
+            starting_pot: pot,
+        };
+        ex.walk(&mut game, "", 0);
+
+        let spot = json!({
+            "flop": flop_cards,
+            "runout": { "turn": turn_str, "river": river_str },
+            "startingPotBb": bb(pot),
+            "effectiveStackBb": bb(stack),
+            "handsByPlayer": hands,
+            "handWeightsByPlayer": weights,
+            "nodes": ex.nodes,
+        });
+
+        let name = format!("{tag}-{flop_str}-{turn_str}{river_str}.json");
+        let path = format!("{outdir}/{name}");
+        std::fs::write(&path, serde_json::to_string(&spot).unwrap()).unwrap();
+        let bytes = std::fs::metadata(&path).unwrap().len();
+        // 이 줄을 생성 스크립트가 읽어 목록 파일을 만든다.
+        println!(
+            "SPOT\t{name}\t{flop_str}\t{turn_str}\t{river_str}\t{}\t{}\t{}",
+            bb(pot),
+            bb(stack),
+            ex.nodes.len()
+        );
+        eprintln!(
+            "  저장 {name} · 노드 {}개 · {:.2}MB",
+            ex.nodes.len(),
+            bytes as f64 / (1024.0 * 1024.0)
+        );
+    }
 }
