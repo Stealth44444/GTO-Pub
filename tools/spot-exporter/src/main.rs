@@ -171,9 +171,21 @@ fn main() {
         })
         .collect();
 
-    // BTN 오픈에 BB가 디펜스한 상황의 가정 레인지. 프리플랍 솔브가 서면 여기가 대체된다.
-    let oop_range = "22+,A2s+,K5s+,Q7s+,J8s+,T8s+,97s+,86s+,75s+,64s+,53s+,A8o+,KTo+,QTo+,JTo";
-    let ip_range = "22+,A2s+,K2s+,Q5s+,J7s+,T7s+,96s+,85s+,74s+,64s+,53s+,A2o+,K8o+,Q9o+,J9o+,T9o";
+    // BTN 오픈에 BB가 디펜스한 상황의 레인지.
+    //
+    // 좁게 잡으면 안 된다. 프리플랍 솔브는 "콜하고 플랍을 본다"의 값을 이 레인지
+    // 안에서만 얻을 수 있어서, 빠진 핸드는 콜이라는 선택지 자체를 잃고 폴드 아니면
+    // 올인으로 몰린다. 실제로 좁은 레인지로 풀었을 때 BB가 콜 6% / 올인 45%라는
+    // 엉뚱한 답이 나왔다. 조금 넓은 건 정확도가 약간 무뎌지는 정도지만, 빠진
+    // 핸드는 답을 통째로 왜곡한다.
+    let oop_range = arg(
+        "--oop-range",
+        "22+,A2s+,K2s+,Q2s+,J4s+,T5s+,95s+,84s+,74s+,63s+,53s+,42s+,32s,A2o+,K5o+,Q7o+,J8o+,T8o+,97o+,87o,76o",
+    );
+    let ip_range = arg(
+        "--ip-range",
+        "22+,A2s+,K2s+,Q2s+,J2s+,T4s+,95s+,84s+,74s+,63s+,53s+,42s+,32s,A2o+,K4o+,Q7o+,J8o+,T8o+,97o+,86o+,76o,65o",
+    );
 
     let card_config = CardConfig {
         range: [oop_range.parse().unwrap(), ip_range.parse().unwrap()],

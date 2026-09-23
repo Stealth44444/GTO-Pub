@@ -7,6 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
+import { loadRanges } from "./preflop-ranges.ts";
 
 const EXPORTER = "tools/spot-exporter/target/release/spot-exporter.exe";
 const OUT_DIR = "public/postflop";
@@ -164,6 +165,14 @@ type IndexEntry = {
   nodeCount: number;
 };
 
+// 프리플랍 솔브 결과가 있으면 그 레인지로 푼다. 없으면 익스포터의 기본값(넓은
+// 가정 레인지)으로 간다 — 첫 바퀴는 그렇게 시작할 수밖에 없다.
+const HAND_ORDER = JSON.parse(
+  readFileSync("scripts/data/equity.json", "utf8"),
+).hands as string[];
+const ranges = loadRanges(HAND_ORDER);
+console.log(ranges ? "레인지: 프리플랍 솔브 결과 사용" : "레인지: 익스포터 기본값 사용");
+
 mkdirSync(OUT_DIR, { recursive: true });
 
 const entries: IndexEntry[] = [];
@@ -185,6 +194,7 @@ FLOPS.forEach((flop, i) => {
       "--tag", TAG,
       "--pot", String(POT_CHIPS),
       "--stack", String(STACK_CHIPS),
+      ...(ranges ? ["--oop-range", ranges.oop, "--ip-range", ranges.ip] : []),
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );

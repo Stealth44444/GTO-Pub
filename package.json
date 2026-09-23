@@ -13,7 +13,9 @@
     "grading:test": "node --experimental-strip-types scripts/grading.test.ts",
     "hand:test": "node --experimental-strip-types scripts/hand.test.ts",
     "preflop:test": "node --experimental-strip-types scripts/preflop.test.ts",
-    "spots:build": "node --experimental-strip-types scripts/build-postflop-spots.ts"
+    "spots:build": "node --experimental-strip-types scripts/build-postflop-spots.ts",
+    "preflop:values": "node --experimental-strip-types scripts/build-preflop-values.ts",
+    "preflop:solve": "node --experimental-strip-types scripts/solve-preflop-btn-bb.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
