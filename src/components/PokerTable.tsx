@@ -133,6 +133,8 @@ export default function PokerTable({
           const glowing = acting && (isHero ? awaitingAction : true);
           // 올인한 사람은 히어로보다 앞이지만 폴드가 아니다.
           const folded = !isHero && !isShover && isFoldedBeforeHero(tableSize, seat, heroPosition);
+          // 확정된 액션 문구. 액션을 마친 자리만 갖는다.
+          const actionText = resolved ? (folded ? "폴드" : isShover ? "올인" : null) : null;
           const posted = isShover ? stackBb : postedBlind(tableSize, seat, anteBb);
           const seatStack = stackBb - posted;
           // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
@@ -233,15 +235,27 @@ export default function PokerTable({
                 }`}
               >
                 <span className="text-[11px] font-bold leading-tight sm:text-xs">{seat}</span>
-                <span className="text-[10px] font-bold leading-tight tabular-nums">
-                  {resolved && folded
-                    ? "폴드"
-                    : resolved && isShover
-                      ? "올인"
-                      : acting && !isHero
-                        ? "…"
-                        : seatStack}
-                </span>
+                {/* 분기마다 key를 달리해 요소를 갈아끼운다. 같은 자리에서 글자만
+                    바꾸면 React가 DOM을 재사용해 애니메이션이 다시 돌지 않는다. */}
+                {actionText ? (
+                  <span
+                    key="acted"
+                    className="text-[11px] font-black leading-tight animate-[gw-action-pop_260ms_cubic-bezier(0.34,1.56,0.64,1)_both] motion-reduce:animate-none"
+                  >
+                    {actionText}
+                  </span>
+                ) : acting && !isHero ? (
+                  <span
+                    key="thinking"
+                    className="text-[11px] font-bold leading-none animate-[gw-thinking_900ms_ease-in-out_infinite] motion-reduce:animate-none"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <span key="stack" className="text-[10px] font-bold leading-tight tabular-nums">
+                    {seatStack}
+                  </span>
+                )}
               </div>
             </div>
           );

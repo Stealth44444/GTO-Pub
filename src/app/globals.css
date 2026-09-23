@@ -93,3 +93,31 @@ body {
     filter: drop-shadow(0 0 8px currentColor);
   }
 }
+
+/* 액션이 확정되는 순간 텍스트가 튀어나온다. 좌석 글씨가 작아서
+   살짝 넘겼다가 제자리로 돌아오는 편이 눈에 걸린다. */
+@keyframes gw-action-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 생각 중 표시. 확정된 액션과 대비되도록 흐릿하게 오간다. */
+@keyframes gw-thinking {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
