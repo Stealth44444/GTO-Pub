@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import BottomNav, { type TabId } from "./BottomNav";
+import HistoryPanel from "./HistoryPanel";
 import Menu from "./Menu";
+import StatsPanel from "./StatsPanel";
 import type { Scenario } from "@/lib/scenarios";
 
 // 핸드 셔플이 클라이언트 랜덤에 의존하므로 SSR을 끄고 클라이언트에서만 렌더링합니다.
@@ -16,17 +18,6 @@ const Trainer = dynamic(() => import("@/components/Trainer"), {
   ),
 });
 
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-      <p className="text-base font-bold text-[var(--gw-text-secondary)]">{title}</p>
-      <p className="text-xs leading-relaxed text-[var(--gw-text-muted)]">
-        연습 기록이 쌓이면 약한 스팟을 짚어주는 화면으로 만들 예정입니다.
-      </p>
-    </div>
-  );
-}
-
 export default function TrainerClient() {
   const [tab, setTab] = useState<TabId>("train");
   const [scenario, setScenario] = useState<Scenario | null>(null);
@@ -38,8 +29,8 @@ export default function TrainerClient() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--gw-bg)]">
-      <main className="relative min-h-0 flex-1">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--gw-bg)]">
+      <main className="relative min-h-0 flex-1 h-full">
         {tab === "train" &&
           (scenario ? (
             <Trainer
@@ -49,8 +40,8 @@ export default function TrainerClient() {
           ) : (
             <Menu onStart={setScenario} />
           ))}
-        {tab === "history" && <ComingSoon title="기록" />}
-        {tab === "stats" && <ComingSoon title="통계" />}
+        {tab === "history" && <HistoryPanel />}
+        {tab === "stats" && <StatsPanel />}
       </main>
       <BottomNav active={tab} onChange={changeTab} />
     </div>

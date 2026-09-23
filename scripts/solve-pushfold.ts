@@ -4,7 +4,9 @@
 //   - 히어로 앞은 전원 폴드한 상태 (RFI 스팟)
 //   - 히어로는 올인 또는 폴드만 선택 가능
 //   - 뒤 플레이어들은 순서대로 콜 또는 폴드하며, 자리마다 콜 레인지를 따로 갖는다
-//     (BB는 이미 1bb를 넣었으므로 앞자리보다 넓게 콜한다)
+//     (BB는 이미 넣은 돈이 있으므로 앞자리보다 넓게 콜한다)
+//   - BB 앤티 방식. BB가 블라인드 1bb에 더해 앤티를 낸다 (기본 1bb, ANTE 환경변수로 변경).
+//     앤티는 이 모델의 유효 범위를 좌우한다 — 자세한 이유는 main()의 주석 참조.
 //   - 칩EV 기준 (ICM 미적용 — 리바인 구간은 칩EV가 지배적이므로 타당한 출발점)
 //
 // 단순화 (명시적으로 기록):
@@ -18,7 +20,7 @@
 //
 // 실행: node --experimental-strip-types scripts/solve-pushfold.ts
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 
 type EquityTable = {
   hands: string[];
@@ -63,11 +65,13 @@ function seatNames(n: number): string[] {
   return fromBack.slice(0, n).reverse();
 }
 
-// 자리별 이미 낸 블라인드 (SB=0.5, BB=1, 나머지 0)
-function postedByseat(n: number): number[] {
+// 자리별 이미 낸 금액 (SB=0.5, BB=1+앤티, 나머지 0).
+// BB 앤티는 BB가 내는 돈이므로 BB의 투자액에 포함된다. 별도 데드머니로 또 더하면
+// BB가 콜할 때의 팟과 남은 스택이 둘 다 틀어진다.
+function postedByseat(n: number, anteBb: number): number[] {
   const posted = new Array(n).fill(0);
   posted[n - 2] = 0.5;
-  posted[n - 1] = 1;
+  posted[n - 1] = 1 + anteBb;
   return posted;
 }
 
@@ -75,7 +79,7 @@ type Spot = {
   stackBb: number;
   tableSize: number;
   heroSeat: number; // 0 = 첫 액션
-  anteBb: number; // 데드머니로 들어간 앤티 총액
+  anteBb: number; // BB가 블라인드와 별도로 내는 앤티 (현대 토너먼트의 "BB 앤티")
 };
 
 type Solution = {
@@ -86,15 +90,15 @@ type Solution = {
 // 올인이 콜됐을 때의 최종 팟.
 // 두 사람의 블라인드는 각자 스택에 포함돼 있으므로 중복 계산하지 않는다.
 // 폴드한 사람들이 남긴 블라인드와 앤티만 추가 데드머니다.
-function potWhenCalled(spot: Spot, heroPosted: number, callerPosted: number, totalBlinds: number) {
-  const deadFromFolders = totalBlinds - heroPosted - callerPosted;
-  return 2 * spot.stackBb + spot.anteBb + Math.max(0, deadFromFolders);
+function potWhenCalled(spot: Spot, heroPosted: number, callerPosted: number, totalPosted: number) {
+  const deadFromFolders = totalPosted - heroPosted - callerPosted;
+  return 2 * spot.stackBb + Math.max(0, deadFromFolders);
 }
 
 // 반복수는 수렴 품질을 좌우한다. 400회는 최대 오차 0.065bb, 4000회는 0.009bb였다.
 function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solution {
-  const posted = postedByseat(spot.tableSize);
-  const totalBlinds = posted.reduce((a, b) => a + b, 0);
+  const posted = postedByseat(spot.tableSize, spot.anteBb);
+  const totalPosted = posted.reduce((a, b) => a + b, 0);
   const heroPosted = posted[spot.heroSeat];
   const behind: number[] = [];
   for (let s = spot.heroSeat + 1; s < spot.tableSize; s++) behind.push(s);
@@ -105,7 +109,7 @@ function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solu
   const nextCalls = behind.map(() => new Float64Array(N));
 
   const risked = spot.stackBb - heroPosted;
-  const deadMoney = totalBlinds - heroPosted + spot.anteBb;
+  const deadMoney = totalPosted - heroPosted;
 
   for (let iter = 0; iter < iterations; iter++) {
     const freqs = calls.map(rangeFrequency);
@@ -124,7 +128,7 @@ function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solu
       let ev = allFold * deadMoney;
       for (let k = 0; k < behind.length; k++) {
         if (firstCaller[k] === 0) continue;
-        const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalBlinds);
+        const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalPosted);
         ev += firstCaller[k] * (equityVsRange(i, calls[k]) * pot - risked);
       }
       nextShove[i] = ev > 0 ? 1 : 0;
@@ -133,7 +137,7 @@ function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solu
     // 각 자리의 최적 대응
     for (let k = 0; k < behind.length; k++) {
       const callerPosted = posted[behind[k]];
-      const pot = potWhenCalled(spot, heroPosted, callerPosted, totalBlinds);
+      const pot = potWhenCalled(spot, heroPosted, callerPosted, totalPosted);
       const callerRisk = spot.stackBb - callerPosted;
       for (let j = 0; j < N; j++) {
         nextCalls[k][j] = equityVsRange(j, shove) * pot - callerRisk > 0 ? 1 : 0;
@@ -153,16 +157,71 @@ function solve(spot: Spot, iterations = Number(process.env.ITERS ?? 4000)): Solu
   return { shove, calls };
 }
 
-// 최적 대응 대비 손실(bb/핸드). 0에 가까울수록 균형에 가깝다.
-function exploitability(spot: Spot, sol: Solution): number {
-  const posted = postedByseat(spot.tableSize);
-  const totalBlinds = posted.reduce((a, b) => a + b, 0);
+// 히어로가 올인했을 때의 EV(폴드 대비, bb). 폴드의 EV가 0이므로 이 값이 곧
+// 두 액션의 EV 차이다. 양수면 올인이, 음수면 폴드가 낫고, 절댓값이 틀렸을 때
+// 잃는 bb다. 앱의 채점과 ev_loss_bb 기록이 이 값을 쓴다.
+function shoveEvByHand(spot: Spot, sol: Solution): Float64Array {
+  const posted = postedByseat(spot.tableSize, spot.anteBb);
+  const totalPosted = posted.reduce((a, b) => a + b, 0);
   const heroPosted = posted[spot.heroSeat];
   const behind: number[] = [];
   for (let s = spot.heroSeat + 1; s < spot.tableSize; s++) behind.push(s);
 
   const risked = spot.stackBb - heroPosted;
-  const deadMoney = totalBlinds - heroPosted + spot.anteBb;
+  const deadMoney = totalPosted - heroPosted;
+  const freqs = sol.calls.map(rangeFrequency);
+
+  const firstCaller = new Array(behind.length).fill(0);
+  let survive = 1;
+  for (let k = 0; k < behind.length; k++) {
+    firstCaller[k] = survive * freqs[k];
+    survive *= 1 - freqs[k];
+  }
+
+  const ev = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let e = survive * deadMoney;
+    for (let k = 0; k < behind.length; k++) {
+      if (firstCaller[k] === 0) continue;
+      const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalPosted);
+      e += firstCaller[k] * (equityVsRange(i, sol.calls[k]) * pot - risked);
+    }
+    ev[i] = e;
+  }
+  return ev;
+}
+
+// 콜러가 콜했을 때의 EV(폴드 대비, bb). 폴드의 EV가 0이므로 이 값이 두 액션의
+// EV 차이다. 히어로의 올인 레인지 상대 승률로 계산한다.
+function callEvByHand(
+  spot: Spot,
+  sol: Solution,
+  seatIndex: number,
+  behind: number[],
+  posted: number[],
+  totalPosted: number,
+): Float64Array {
+  const heroPosted = posted[spot.heroSeat];
+  const callerPosted = posted[behind[seatIndex]];
+  const pot = potWhenCalled(spot, heroPosted, callerPosted, totalPosted);
+  const callerRisk = spot.stackBb - callerPosted;
+  const ev = new Float64Array(N);
+  for (let j = 0; j < N; j++) {
+    ev[j] = equityVsRange(j, sol.shove) * pot - callerRisk;
+  }
+  return ev;
+}
+
+// 최적 대응 대비 손실(bb/핸드). 0에 가까울수록 균형에 가깝다.
+function exploitability(spot: Spot, sol: Solution): number {
+  const posted = postedByseat(spot.tableSize, spot.anteBb);
+  const totalPosted = posted.reduce((a, b) => a + b, 0);
+  const heroPosted = posted[spot.heroSeat];
+  const behind: number[] = [];
+  for (let s = spot.heroSeat + 1; s < spot.tableSize; s++) behind.push(s);
+
+  const risked = spot.stackBb - heroPosted;
+  const deadMoney = totalPosted - heroPosted;
   const freqs = sol.calls.map(rangeFrequency);
 
   const firstCaller = new Array(behind.length).fill(0);
@@ -179,7 +238,7 @@ function exploitability(spot: Spot, sol: Solution): number {
     let ev = survive * deadMoney;
     for (let k = 0; k < behind.length; k++) {
       if (firstCaller[k] === 0) continue;
-      const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalBlinds);
+      const pot = potWhenCalled(spot, heroPosted, posted[behind[k]], totalPosted);
       ev += firstCaller[k] * (equityVsRange(i, sol.calls[k]) * pot - risked);
     }
     loss += (Math.max(0, ev) - sol.shove[i] * ev) * COMBOS[i];
@@ -188,7 +247,7 @@ function exploitability(spot: Spot, sol: Solution): number {
 
   for (let k = 0; k < behind.length; k++) {
     const callerPosted = posted[behind[k]];
-    const pot = potWhenCalled(spot, heroPosted, callerPosted, totalBlinds);
+    const pot = potWhenCalled(spot, heroPosted, callerPosted, totalPosted);
     const callerRisk = spot.stackBb - callerPosted;
     for (let j = 0; j < N; j++) {
       const ev = equityVsRange(j, sol.shove) * pot - callerRisk;
@@ -205,9 +264,18 @@ function main() {
     `승률표: ${raw.generatedAt} (매치업당 ${raw.targetSamplesPerMatchup.toLocaleString()} 샘플)\n`,
   );
 
+  // BB 앤티. 앤티가 0이면 데드머니가 블라인드 1.5bb뿐이라, 16bb 이상에서 콜 손익분기
+  // 승률이 48%까지 올라가고 균형이 "빅페어만 콜"로 무너진다. 그 레인지 상대로는
+  // A5s가 88보다 승률이 높아져(88은 빅페어 전부에게 19%, A5s는 AA에게만 12%)
+  // 중간 페어가 빠지고 약한 수티드 에이스가 들어가는 비정상 레인지가 나온다.
+  const anteBb = Number(process.env.ANTE ?? 1);
+  console.log(`BB 앤티: ${anteBb}bb
+`);
+
   const tableSizes = [9, 6];
   const stacks = [8, 10, 12, 15, 20];
   const results: Record<string, unknown>[] = [];
+  const callResults: Record<string, unknown>[] = [];
 
   for (const tableSize of tableSizes) {
     const names = seatNames(tableSize);
@@ -220,9 +288,10 @@ function main() {
 
       // BB는 RFI 올인 주체가 아니므로 제외
       for (let heroSeat = 0; heroSeat < tableSize - 1; heroSeat++) {
-        const spot: Spot = { stackBb, tableSize, heroSeat, anteBb: 0 };
+        const spot: Spot = { stackBb, tableSize, heroSeat, anteBb };
         const sol = solve(spot);
         const expl = exploitability(spot, sol);
+        const ev = shoveEvByHand(spot, sol);
         worstExploit = Math.max(worstExploit, expl);
         const freq = rangeFrequency(sol.shove) * 100;
         row.push(`${freq.toFixed(1)}%`.padStart(6));
@@ -230,15 +299,54 @@ function main() {
         results.push({
           tableSize,
           stackBb,
+          anteBb,
           position: names[heroSeat],
           shoveFrequencyPct: Number(freq.toFixed(2)),
           exploitabilityBb: Number(expl.toFixed(5)),
           shove: Object.fromEntries(
             HANDS.map((h, i) => [h, Number(sol.shove[i].toFixed(3))]).filter(
-              ([, v]) => (v as number) > 0.001,
+              ([, v]) => (v as number) >= 0.005,
             ),
           ),
+          // 전 핸드를 담는다. 어떤 핸드가 나와도 채점해야 하므로 걸러낼 수 없다.
+          // 순서는 최상위 hands와 같다.
+          shoveEvBb: Array.from(ev, (v) => Number(v.toFixed(3))),
         });
+
+        // 같은 풀이에서 나온 콜 레인지. 블라인드를 내지 않은 자리들은 팟오즈와
+        // 상대 레인지가 모두 같아 결과가 동일하므로, 같은 값을 자리 수만큼
+        // 저장하지 않고 한 번만 담고 해당 자리들을 함께 적는다.
+        const posted = postedByseat(tableSize, anteBb);
+        const totalPosted = posted.reduce((a, b) => a + b, 0);
+        const behind: number[] = [];
+        for (let st = heroSeat + 1; st < tableSize; st++) behind.push(st);
+
+        const grouped = new Map<string, { seats: string[]; range: Float64Array; ev: Float64Array }>();
+        for (let k = 0; k < behind.length; k++) {
+          const range = sol.calls[k];
+          const callEv = callEvByHand(spot, sol, k, behind, posted, totalPosted);
+          const key = Array.from(range, (v) => v.toFixed(3)).join(",");
+          const found = grouped.get(key);
+          if (found) found.seats.push(names[behind[k]]);
+          else grouped.set(key, { seats: [names[behind[k]]], range, ev: callEv });
+        }
+
+        for (const { seats, range, ev: callEv } of grouped.values()) {
+          callResults.push({
+            tableSize,
+            stackBb,
+            anteBb,
+            shoverPosition: names[heroSeat],
+            callerPositions: seats,
+            callFrequencyPct: Number((rangeFrequency(range) * 100).toFixed(2)),
+            call: Object.fromEntries(
+              HANDS.map((h, i) => [h, Number(range[i].toFixed(3))]).filter(
+                ([, v]) => (v as number) >= 0.005,
+              ),
+            ),
+            callEvBb: Array.from(callEv, (v) => Number(v.toFixed(3))),
+          });
+        }
       }
 
       console.log(`${String(stackBb).padStart(3)}bb ` + row.join("") + `   (최대 오차 ${worstExploit.toFixed(4)}bb)`);
@@ -246,16 +354,41 @@ function main() {
     console.log("");
   }
 
+  // 두 파일로 나눈다. 올인 트레이너만 쓰는 사람에게 콜 데이터까지 받게 할
+  // 이유가 없다 — QR로 들어오는 앱이라 첫 로드 크기가 곧 진입 마찰이다.
+  const generatedAt = new Date().toISOString();
+  const equitySource = { generatedAt: raw.generatedAt, samples: raw.targetSamplesPerMatchup };
+
   writeFileSync(
     "src/data/pushfold.json",
     JSON.stringify({
-      generatedAt: new Date().toISOString(),
-      model: "chipEV push/fold, RFI spot, at most one caller assumed, no ante",
-      equitySource: { generatedAt: raw.generatedAt, samples: raw.targetSamplesPerMatchup },
+      generatedAt,
+      model: "chipEV push/fold, RFI spot, at most one caller assumed",
+      anteBb,
+      equitySource,
+      hands: HANDS,
       spots: results,
     }),
   );
-  console.log("저장: src/data/pushfold.json");
+
+  writeFileSync(
+    "src/data/pushfold-calls.json",
+    JSON.stringify({
+      generatedAt,
+      model: "chipEV call/fold vs a single shove, no further callers",
+      anteBb,
+      equitySource,
+      hands: HANDS,
+      callSpots: callResults,
+    }),
+  );
+
+  const kb = (f: string) => (statSync(f).size / 1024).toFixed(0);
+  console.log(
+    `저장: src/data/pushfold.json (올인 ${results.length}스팟, ${kb("src/data/pushfold.json")}KB)
+` +
+      `      src/data/pushfold-calls.json (콜 ${callResults.length}스팟, ${kb("src/data/pushfold-calls.json")}KB)`,
+  );
 }
 
 main();

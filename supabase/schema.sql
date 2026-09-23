@@ -11,13 +11,23 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+-- 한 시도를 나중에 분석하려면 "어떤 스팟이었는지"가 행 안에 있어야 한다.
+-- position과 hand_code만으로는 9인 8bb였는지 6인 20bb였는지 알 수 없고,
+-- 그 둘은 정답이 정반대다.
 create table if not exists training_attempts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users (id) on delete cascade,
+  mode text not null default 'pushfold',
+  table_size smallint,
+  stack_bb numeric(7, 2),
+  ante_bb numeric(5, 2),
   position text not null,
+  -- 올인 대응에서 먼저 올인한 자리. 올인한 자리에 따라 상대 레인지가 달라져
+  -- 정답도 달라지므로, 이게 없으면 행을 해석할 수 없다.
+  shover_position text,
   hand_code text not null,
-  user_action text not null check (user_action in ('open', 'fold')),
-  correct_action text not null check (correct_action in ('open', 'fold')),
+  user_action text not null check (user_action in ('shove', 'call', 'open', 'fold')),
+  correct_action text not null check (correct_action in ('shove', 'call', 'open', 'fold')),
   is_correct boolean not null,
   selected_frequency numeric(5, 2),
   ev_loss_bb numeric(8, 4),
@@ -30,6 +40,23 @@ create index if not exists training_attempts_created_at_idx on training_attempts
 -- 기존 파일럿 DB에도 솔루션 품질 지표 컬럼을 안전하게 추가한다.
 alter table training_attempts add column if not exists selected_frequency numeric(5, 2);
 alter table training_attempts add column if not exists ev_loss_bb numeric(8, 4);
+
+-- 스팟 정보. 이 컬럼들이 없던 동안 쌓인 행은 어떤 조건이었는지 복원할 수 없어
+-- null로 남는다.
+alter table training_attempts add column if not exists mode text not null default 'pushfold';
+alter table training_attempts add column if not exists table_size smallint;
+alter table training_attempts add column if not exists stack_bb numeric(7, 2);
+alter table training_attempts add column if not exists ante_bb numeric(5, 2);
+alter table training_attempts add column if not exists shover_position text;
+
+-- 올인을 'open'으로 적던 제약을 푼다. 푸시/폴드의 올인과 딥스택 오픈레이즈는
+-- 다른 액션인데 같은 값으로 뭉개져 있었다.
+alter table training_attempts drop constraint if exists training_attempts_user_action_check;
+alter table training_attempts add constraint training_attempts_user_action_check
+  check (user_action in ('shove', 'call', 'open', 'fold'));
+alter table training_attempts drop constraint if exists training_attempts_correct_action_check;
+alter table training_attempts add constraint training_attempts_correct_action_check
+  check (correct_action in ('shove', 'call', 'open', 'fold'));
 
 -- 솔버 또는 검증된 외부 데이터에서 가져온 학습 기준.
 -- 한 행은 하나의 스팟/핸드에 대한 액션 빈도와 EV 정보를 나타낸다.

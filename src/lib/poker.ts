@@ -122,10 +122,12 @@ export function isFoldedBeforeHero(
 }
 
 // 자리별로 이미 낸 블라인드 (SB 0.5, BB 1, 나머지 0)
-export function postedBlind(tableSize: number, seat: string): number {
+// 이 자리가 액션 전에 이미 넣은 돈. BB 앤티는 BB가 내므로 BB의 금액에 포함된다
+// (솔버의 postedByseat와 같은 규칙이어야 화면의 팟과 정답 레인지가 어긋나지 않는다).
+export function postedBlind(tableSize: number, seat: string, anteBb = 0): number {
   const names = seatNames(tableSize);
   const idx = names.indexOf(seat);
-  if (idx === names.length - 1) return 1;
+  if (idx === names.length - 1) return 1 + anteBb;
   if (idx === names.length - 2) return 0.5;
   return 0;
 }
@@ -142,7 +144,10 @@ export const SEAT_STACK: Record<Seat, number> = {
   BB: STACK_BASE - 1,
 };
 
-export const PREFLOP_POT = 1.5; // SB(0.5) + BB(1)
+// 액션 시작 시점의 팟: SB(0.5) + BB(1) + BB 앤티
+export function preflopPot(anteBb = 0): number {
+  return 1.5 + anteBb;
+}
 
 // 오픈 사이징 표시용 (그레이딩에는 사용되지 않는 참고용 수치)
 export const OPEN_SIZE: Record<Position, number> = {
@@ -174,7 +179,9 @@ export interface HandInfo {
   combos: number;
 }
 
-export type Action = "open" | "fold";
+// 푸시/폴드의 올인은 딥스택 오픈레이즈와 다른 액션이다. 기록에서 둘을 구분해야
+// 나중에 분석할 수 있다 (scenarios.ts의 ActionId와 같은 집합).
+export type Action = "shove" | "call" | "open" | "fold";
 
 export type ActionFrequency = {
   open: number;

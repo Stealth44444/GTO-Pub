@@ -7,7 +7,7 @@ import {
   postedBlind,
   randomSuits,
   TABLE_FELT,
-  PREFLOP_POT,
+  preflopPot,
   type HandInfo,
 } from "@/lib/poker";
 import Card from "./Card";
@@ -16,11 +16,16 @@ export default function PokerTable({
   tableSize,
   heroPosition,
   stackBb,
+  anteBb,
+  shoverPosition,
   hand,
 }: {
   tableSize: number;
   heroPosition: string;
   stackBb: number;
+  anteBb: number;
+  /** 히어로 앞에서 이미 올인한 자리. 없으면 null. */
+  shoverPosition: string | null;
   hand: HandInfo;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -38,6 +43,12 @@ export default function PokerTable({
     observer.observe(box);
     return () => observer.disconnect();
   }, []);
+
+  // 누가 이미 올인했다면 그 스택이 통째로 팟에 들어가 있다. 이미 낸 블라인드는
+  // 그 스택에 포함돼 있으므로 중복해서 더하지 않는다.
+  const potBb = shoverPosition
+    ? preflopPot(anteBb) + stackBb - postedBlind(tableSize, shoverPosition, anteBb)
+    : preflopPot(anteBb);
 
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
   const seats = useMemo(
@@ -61,15 +72,33 @@ export default function PokerTable({
           }}
         />
 
-        <div className="absolute left-1/2 top-[38%] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-xs font-medium text-[var(--gw-text-muted)]">
-          <span className="h-2 w-2 rounded-full bg-sky-400" />
-          POT {PREFLOP_POT}bb
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 text-base font-bold tabular-nums text-[var(--gw-text-muted)]"
+          style={{ top: `${TABLE_FELT.top + TABLE_FELT.height / 2}%` }}
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+          POT {potBb}bb
         </div>
 
         {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
-          const folded = !isHero && isFoldedBeforeHero(tableSize, seat, heroPosition);
-          const seatStack = stackBb - postedBlind(tableSize, seat);
+          const isShover = seat === shoverPosition;
+          // 올인한 사람은 히어로보다 앞이지만 폴드가 아니다.
+          const folded = !isHero && !isShover && isFoldedBeforeHero(tableSize, seat, heroPosition);
+          const posted = isShover ? stackBb : postedBlind(tableSize, seat, anteBb);
+          const seatStack = stackBb - posted;
+          // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
+          // 향하는 방향으로 밀어내면 위아래 좌석도 옆이 아니라 앞에 놓인다.
+          // top은 높이 기준 %, left는 너비 기준 %라 가로 성분에 비율을 곱해야
+          // 화면상의 실제 방향이 된다.
+          const towardPotX = (50 - parseFloat(left)) * aspect;
+          const towardPotY = TABLE_FELT.top + TABLE_FELT.height / 2 - parseFloat(top);
+          const reach = Math.hypot(towardPotX, towardPotY) || 1;
+          // 좌석 원 반지름이 28~32px이므로 그보다 넉넉히 떨어뜨려 붙지 않게 한다.
+          // 히어로는 자기 앞에 카드가 놓여 있어 팟 쪽으로 밀면 카드에 가린다.
+          // 그 자리만 옆으로 뺀다.
+          const chipX = isHero ? 46 : (towardPotX / reach) * 62;
+          const chipY = isHero ? 0 : (towardPotY / reach) * 62;
           return (
             <div
               key={seat}
@@ -77,19 +106,33 @@ export default function PokerTable({
               className="absolute h-14 w-14 -translate-x-1/2 -translate-y-1/2 sm:h-16 sm:w-16"
               style={{ top, left }}
             >
-              <div className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2">
+              <div className="absolute bottom-full left-1/2 z-20 mb-1 flex -translate-x-1/2">
                 {isHero ? (
                   <div className="flex gap-1">
                     <Card rank={hand.high} suit={highSuit} />
                     <Card rank={hand.low} suit={lowSuit} />
                   </div>
-                ) : !folded ? (
+                ) : !folded || isShover ? (
                   <div className="flex gap-0.5">
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
                   </div>
                 ) : null}
               </div>
+
+              {posted > 0 && (
+                <span
+                  className="absolute z-10 flex items-center gap-1 whitespace-nowrap text-[11px] font-bold tabular-nums text-[var(--gw-text-secondary)]"
+                  style={{
+                    left: `calc(50% + ${chipX}px)`,
+                    top: `calc(50% + ${chipY}px)`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-sky-400 ring-1 ring-sky-200/60" />
+                  {posted}bb
+                </span>
+              )}
 
               {seat === "BTN" && (
                 <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--gw-text-primary)] text-[10px] font-bold text-[var(--gw-bg)] shadow">
@@ -108,7 +151,7 @@ export default function PokerTable({
               >
                 <span className="text-[11px] font-bold leading-tight sm:text-xs">{seat}</span>
                 <span className="text-[10px] font-bold leading-tight tabular-nums">
-                  {folded ? "폴드" : seatStack}
+                  {folded ? "폴드" : isShover ? "올인" : seatStack}
                 </span>
               </div>
             </div>

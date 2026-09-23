@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { randomHand, seatNames, type HandInfo } from "@/lib/poker";
 import {
   ACTION_LABEL,
+  evLossFor,
+  actionEvFor,
   exploitabilityFor,
   randomSituation,
   solutionFor,
@@ -12,6 +14,16 @@ import {
   type Scenario,
   type Situation,
 } from "@/lib/scenarios";
+import {
+  formatEv,
+  formatEvLoss,
+  gradeByEvLoss,
+  gradeByFrequency,
+  isCleanChoice,
+  type Grade,
+} from "@/lib/grading";
+import GradeIcon from "./GradeIcon";
+import { callDataReady, loadCallData } from "@/lib/callspots";
 import { ensureGuestUser, logAttempt } from "@/lib/attempts";
 import { getGuestId } from "@/lib/guest";
 import PokerTable from "./PokerTable";
@@ -24,6 +36,15 @@ type Round = {
 type Feedback = {
   action: ActionId;
   solution: ActionFrequencies;
+  grade: Grade;
+  /** 이 선택이 최선 대비 잃은 bb. EV 데이터가 없는 모드는 null. */
+  evLoss: number | null;
+  /** 이 스팟에서 더 나은 액션. */
+  best: ActionId;
+  /** 액션별 EV(bb). 폴드가 0 기준. EV 데이터가 없는 모드는 null. */
+  actionEv: Partial<Record<ActionId, number>> | null;
+  /** 각 액션을 골랐다면 받았을 등급. 해설에서 액션마다 표시한다. */
+  actionGrade: Partial<Record<ActionId, Grade>>;
 };
 
 function nextRound(scenario: Scenario): Round {
@@ -41,11 +62,26 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [stats, setStats] = useState({ attempts: 0, correct: 0, streak: 0 });
   const [guestId] = useState<string>(() => getGuestId());
+  // 올인 대응 데이터는 번들에 없고 이 화면에 들어올 때 받아온다.
+  const [dataReady, setDataReady] = useState(
+    () => scenario.mode !== "vsshove" || callDataReady(),
+  );
   const historyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void ensureGuestUser(guestId);
   }, [guestId]);
+
+  useEffect(() => {
+    if (dataReady) return;
+    let alive = true;
+    void loadCallData().then(() => {
+      if (alive) setDataReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [dataReady]);
 
   const advance = useCallback(() => {
     setFeedback(null);
@@ -59,25 +95,53 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
       if (feedback) return;
       const solution = solutionFor(scenario.mode, round.situation, round.hand.code);
       const chosen = solution[action] ?? 0;
-      const isCorrect = chosen >= 50;
-
-      setFeedback({ action, solution });
-      setStats((s) => ({
-        attempts: s.attempts + 1,
-        correct: s.correct + (isCorrect ? 1 : 0),
-        streak: isCorrect ? s.streak + 1 : 0,
-      }));
-
+      // 빈도가 아니라 EV 손실로 매긴다. 무차별점 근처의 선택을 틀렸다고
+      // 깎지 않기 위해서다. EV 데이터가 없는 모드만 빈도로 대체한다.
+      const evLoss = evLossFor(scenario.mode, round.situation, round.hand.code, action);
+      const grade = evLoss === null ? gradeByFrequency(chosen) : gradeByEvLoss(evLoss);
+      const clean = isCleanChoice(grade);
       const best = round.situation.actions.reduce((a, b) =>
         (solution[a] ?? 0) >= (solution[b] ?? 0) ? a : b,
       );
+
+      // 고르지 않은 액션도 등급을 매겨둔다. "폴드였으면 최선이었다"를 보여줘야
+      // 해설이 성립한다.
+      const actionGrade: Partial<Record<ActionId, Grade>> = {};
+      for (const a of round.situation.actions) {
+        const loss = evLossFor(scenario.mode, round.situation, round.hand.code, a);
+        actionGrade[a] = loss === null ? gradeByFrequency(solution[a] ?? 0) : gradeByEvLoss(loss);
+      }
+
+      setFeedback({
+        action,
+        solution,
+        grade,
+        evLoss,
+        best,
+        actionEv: actionEvFor(scenario.mode, round.situation, round.hand.code),
+        actionGrade,
+      });
+      setStats((s) => ({
+        attempts: s.attempts + 1,
+        correct: s.correct + (clean ? 1 : 0),
+        streak: clean ? s.streak + 1 : 0,
+      }));
+
+      // 스팟 전체를 남긴다. position과 hand_code만으로는 9인 8bb였는지
+      // 6인 20bb였는지 알 수 없어 기록을 나중에 해석할 수 없다.
       void logAttempt({
         userId: guestId,
+        mode: scenario.mode,
+        tableSize: round.situation.tableSize,
+        stackBb: round.situation.stackBb,
+        anteBb: round.situation.anteBb,
         position: round.situation.position,
+        shoverPosition: round.situation.shoverPosition,
         handCode: round.hand.code,
-        userAction: action === "fold" ? "fold" : "open",
-        correctAction: best === "fold" ? "fold" : "open",
+        userAction: action,
+        correctAction: best,
         selectedFrequency: chosen,
+        evLossBb: evLoss ?? undefined,
       });
     },
     [feedback, round, scenario.mode, guestId],
@@ -88,14 +152,20 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
   }, [round]);
 
   const { situation, hand } = round;
-  const chosenFreq = feedback ? (feedback.solution[feedback.action] ?? 0) : 0;
-  const isCorrect = feedback ? chosenFreq >= 50 : null;
-  const accuracy = stats.attempts === 0 ? 0 : Math.round((stats.correct / stats.attempts) * 100);
   const exploitability = exploitabilityFor(situation);
+  const accuracy = stats.attempts === 0 ? 0 : Math.round((stats.correct / stats.attempts) * 100);
+
+  if (!dataReady) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <span className="text-[var(--gw-text-muted)]">레인지 데이터를 받는 중...</span>
+      </div>
+    );
+  }
 
   return (
     <div
-      className="relative flex h-full flex-col select-none overflow-hidden"
+      className="relative flex h-full min-h-0 flex-col select-none overflow-hidden"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <div className="absolute inset-x-0 top-0 z-20 flex h-12 items-center gap-2 bg-[var(--gw-bg)]/90 px-3 backdrop-blur-sm">
@@ -123,12 +193,14 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 pt-12">
+      <div className="relative min-h-0 flex-1">
         <div className="absolute inset-x-0 bottom-0 top-12">
           <PokerTable
             tableSize={situation.tableSize}
             heroPosition={situation.position}
             stackBb={situation.stackBb}
+            anteBb={situation.anteBb}
+            shoverPosition={situation.shoverPosition}
             hand={hand}
           />
         </div>
@@ -149,7 +221,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
             }`}
           >
             {ACTION_LABEL[action]}
-            {action === "shove" && (
+            {(action === "shove" || action === "call") && (
               <span className="ml-1 text-xs font-normal opacity-80">{situation.stackBb}bb</span>
             )}
           </button>
@@ -159,46 +231,63 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
       {feedback && (
         <section className="absolute inset-x-0 bottom-0 z-30 max-h-full overflow-y-auto border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 pb-3 pt-5 shadow-[0_-18px_40px_rgba(0,0,0,0.42)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]">
           <div className="mx-auto flex max-w-sm flex-col items-center">
-            <div
-              className={`flex h-24 w-24 items-center justify-center rounded-full border-[6px] bg-[var(--gw-bg)] ${
-                isCorrect ? "border-[var(--gw-accent)]" : "border-[var(--gw-danger)]"
-              }`}
-            >
-              <div className="text-center">
-                <div className="text-[10px] font-medium text-[var(--gw-text-muted)]">정답 빈도</div>
-                <div
-                  className={`text-2xl font-black leading-none ${
-                    isCorrect ? "text-[var(--gw-accent)]" : "text-[var(--gw-danger)]"
-                  }`}
-                >
-                  {chosenFreq}%
-                </div>
+            <div className="flex items-center gap-2">
+              <GradeIcon id={feedback.grade.id} color={feedback.grade.color} className="h-7 w-7" />
+              <span
+                className="text-2xl font-black leading-none"
+                style={{ color: feedback.grade.color }}
+              >
+                {feedback.grade.label}
+              </span>
+            </div>
+            {feedback.evLoss !== null && feedback.evLoss > 0 && (
+              <div className="mt-1 text-xs font-bold tabular-nums text-[var(--gw-text-muted)]">
+                {formatEvLoss(feedback.evLoss)}
               </div>
-            </div>
-
-            <div className="mt-3 text-lg font-black text-[var(--gw-text-primary)]">
-              {isCorrect ? "좋은 선택입니다" : "다시 볼 선택입니다"}
-            </div>
-            <div className="mt-0.5 text-xs text-[var(--gw-text-muted)]">
+            )}
+            <div className="mt-1 text-xs text-[var(--gw-text-muted)]">
               {situation.tableSize}인 · {situation.position} · {situation.stackBb}bb · {hand.code}
             </div>
 
-            <div className="mt-4 w-full space-y-1.5 text-[11px] text-[var(--gw-text-secondary)]">
-              {situation.actions.map((action) => (
-                <div key={action} className="flex items-center gap-2">
-                  <span className="w-8 shrink-0">{ACTION_LABEL[action]}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--gw-bg)]">
-                    <div
-                      className={`h-full rounded-full ${
-                        action === "fold" ? "bg-[var(--gw-danger)]" : "bg-[var(--gw-accent)]"
-                      }`}
-                      style={{ width: `${feedback.solution[action] ?? 0}%` }}
-                    />
+            {/* 액션별 해설 — 고른 것뿐 아니라 각 액션이 얼마나 좋은지, 빈도와 EV를
+                나란히 보여줘야 "왜 틀렸는지"가 드러난다. 고른 액션은 등급 색으로 두른다. */}
+            <div className="mt-4 w-full space-y-1.5">
+              {situation.actions.map((action) => {
+                const rowGrade = feedback.actionGrade[action];
+                const chosen = action === feedback.action;
+                const ev = feedback.actionEv?.[action];
+                return (
+                  <div
+                    key={action}
+                    className="flex items-center gap-2 rounded-[var(--gw-radius-control)] border-2 bg-[var(--gw-table-header)] px-2.5 py-2"
+                    style={{ borderColor: chosen && rowGrade ? rowGrade.color : "transparent" }}
+                  >
+                    {rowGrade && <GradeIcon id={rowGrade.id} color={rowGrade.color} />}
+                    <span className="flex-1 text-sm font-bold text-[var(--gw-text-primary)]">
+                      {ACTION_LABEL[action]}
+                    </span>
+                    <span className="w-12 shrink-0 text-right text-sm font-bold tabular-nums text-[var(--gw-text-secondary)]">
+                      {feedback.solution[action] ?? 0}%
+                    </span>
+                    <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-[var(--gw-text-muted)]">
+                      {ev === undefined ? "" : formatEv(ev)}
+                    </span>
                   </div>
-                  <span className="w-9 shrink-0 text-right tabular-nums">
-                    {feedback.solution[action] ?? 0}%
-                  </span>
-                </div>
+                );
+              })}
+            </div>
+
+            {/* 빈도 막대 — 카드 수트 색을 그대로 쓴다. 트레이너 안에서 초록/빨강이
+                이미 클럽·하트 색으로 학습돼 있어 같은 색을 쓰는 편이 읽기 쉽다. */}
+            <div className="mt-2 flex h-4 w-full overflow-hidden rounded-[2px] bg-[var(--gw-bg)]">
+              {situation.actions.map((action) => (
+                <div
+                  key={action}
+                  className={
+                    action === "fold" ? "bg-[var(--gw-card-heart)]" : "bg-[var(--gw-card-club)]"
+                  }
+                  style={{ width: `${feedback.solution[action] ?? 0}%` }}
+                />
               ))}
             </div>
 

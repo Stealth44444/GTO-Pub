@@ -9,7 +9,9 @@
     "lint": "eslint",
     "solver:test": "node --experimental-strip-types scripts/evaluator.test.ts",
     "solver:equity": "node --experimental-strip-types scripts/build-equity.ts",
-    "solver:pushfold": "node --experimental-strip-types scripts/solve-pushfold.ts"
+    "solver:pushfold": "node --experimental-strip-types scripts/solve-pushfold.ts",
+    "grading:test": "node --experimental-strip-types scripts/grading.test.ts",
+    "hand:test": "node --experimental-strip-types scripts/hand.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
