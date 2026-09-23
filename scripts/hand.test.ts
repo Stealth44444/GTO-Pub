@@ -13,6 +13,7 @@ import {
   type SolvedSpot,
 } from "../src/lib/tree.ts";
 import { applyAction, evLossByAction, isOver, startHand } from "../src/lib/hand.ts";
+import { dealHands, sampleActionIndex } from "../src/lib/postflopSpot.ts";
 
 let passed = 0;
 let failed = 0;
@@ -108,6 +109,34 @@ expect(evLossByAction(actionEvFor(faced, 1)), [0, 0.9, 1.4], "7c2d는 폴드가 
 
 const allBest = evLossByAction([2.0, 2.0, 2.0]);
 expect(allBest, [0, 0, 0], "전부 같으면 손실 없음");
+
+console.log("딜링과 상대 액션");
+// 고정 수열을 넣어 결정적으로 검증한다.
+const seq = (values: number[]) => {
+  let i = 0;
+  return () => values[i++ % values.length];
+};
+
+// OOP 가중치 [1.0, 0.5] → 합 1.5. 난수 0.1 × 1.5 = 0.15 → 첫 핸드
+const d1 = dealHands(spot, 0, seq([0.1, 0.1]));
+expect(d1.hands[0], "AhAs", "가중치가 큰 첫 핸드가 뽑힘");
+expect(d1.handIdx[0], 0, "색인도 함께 나옴");
+expect(d1.heroPlayer, 0, "히어로 자리 보존");
+
+// 난수 0.9 × 1.5 = 1.35 → 첫 핸드(1.0)를 넘어 둘째 핸드
+const d2 = dealHands(spot, 1, seq([0.9, 0.1]));
+expect(d2.hands[0], "7c2d", "난수가 크면 둘째 핸드");
+
+// 카드 충돌 회피: 양쪽 4장이 전부 달라야 한다
+const bothCards = new Set([
+  ...(d1.hands[0].match(/../g) ?? []),
+  ...(d1.hands[1].match(/../g) ?? []),
+]);
+expect(bothCards.size, 4, "양쪽 4장이 전부 다른 카드");
+
+// 상대 액션: 루트에서 7c2d(색인 1)는 체크 0.8 / 벳 0.2
+expect(sampleActionIndex(root, 1, seq([0.5])), 0, "난수 0.5면 체크(0.8 구간)");
+expect(sampleActionIndex(root, 1, seq([0.9])), 1, "난수 0.9면 벳(0.2 구간)");
 
 console.log(`\n통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);

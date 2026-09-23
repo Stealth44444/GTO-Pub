@@ -189,6 +189,12 @@ fn main() {
         .map(|p| holes_to_strings(game.private_cards(p)).unwrap())
         .collect();
 
+    // 레인지의 핸드별 비중. 이게 없으면 모든 조합을 같은 확률로 돌리게 되는데,
+    // 실제 레인지는 핸드마다 비중이 달라서 딜링이 왜곡된다.
+    let weights: Vec<Vec<f64>> = (0..2)
+        .map(|p| game.weights(p).iter().map(|w| round3(*w)).collect())
+        .collect();
+
     let mut ex = Exporter {
         nodes: Vec::new(),
         runout: [
@@ -211,6 +217,7 @@ fn main() {
         "startingPotBb": bb(pot),
         "effectiveStackBb": bb(stack),
         "handsByPlayer": hands,
+        "handWeightsByPlayer": weights,
         "nodes": ex.nodes,
     });
 

@@ -1,39 +1,217 @@
 {
-  "flop": ["Td", "9d", "6h"],
-  "runout": { "turn": "2c", "river": "7s" },
+  "flop": [
+    "Td",
+    "9d",
+    "6h"
+  ],
+  "runout": {
+    "turn": "2c",
+    "river": "7s"
+  },
   "startingPotBb": 5.5,
   "effectiveStackBb": 20,
-  "handsByPlayer": [["AhAs", "7c2d"], ["KdKc", "8h3s"]],
+  "handsByPlayer": [
+    [
+      "AhAs",
+      "7c2d"
+    ],
+    [
+      "KdKc",
+      "8h3s"
+    ]
+  ],
+  "handWeightsByPlayer": [
+    [
+      1.0,
+      0.5
+    ],
+    [
+      1.0,
+      1.0
+    ]
+  ],
   "nodes": [
-    { "line": "", "street": "flop", "player": 0, "potBb": 5.5, "handCount": 2,
-      "actions": [{ "kind": "check", "amountBb": 0 }, { "kind": "bet", "amountBb": 2.8 }],
-      "strategy": [0.2, 0.8, 0.8, 0.2],
-      "actionEv": [5.8, 1.2, 6.0, 0.9] },
-
-    { "line": "check", "street": "flop", "player": 1, "potBb": 5.5, "handCount": 2,
-      "actions": [{ "kind": "check", "amountBb": 0 }, { "kind": "bet", "amountBb": 2.8 }],
-      "strategy": [0.5, 0.9, 0.5, 0.1],
-      "actionEv": [4.0, 1.5, 3.8, 1.4] },
-
-    { "line": "check/check", "street": "turn", "player": 0, "potBb": 5.5, "handCount": 2,
-      "actions": [{ "kind": "check", "amountBb": 0 }, { "kind": "bet", "amountBb": 4.1 }],
-      "strategy": [0.3, 0.7, 0.7, 0.3],
-      "actionEv": [6.3, 1.0, 6.5, 0.8] },
-
-    { "line": "check/check/check", "street": "turn", "player": 1, "potBb": 5.5, "handCount": 2,
-      "actions": [{ "kind": "check", "amountBb": 0 }, { "kind": "bet", "amountBb": 4.1 }],
-      "strategy": [0.6, 0.8, 0.4, 0.2],
-      "actionEv": [4.2, 1.3, 4.0, 1.1] },
-
-    { "line": "check/check/check/check", "street": "river", "player": 0, "potBb": 5.5, "handCount": 2,
-      "actions": [{ "kind": "check", "amountBb": 0 }, { "kind": "bet", "amountBb": 5.5 }],
-      "strategy": [0.4, 0.6, 0.6, 0.4],
-      "actionEv": [6.8, 0.9, 7.0, 0.7] },
-
-    { "line": "check/bet2.8", "street": "flop", "player": 0, "potBb": 8.3, "handCount": 2,
-      "actions": [{ "kind": "fold", "amountBb": 0 }, { "kind": "call", "amountBb": 2.8 },
-                  { "kind": "raise", "amountBb": 8.4 }],
-      "strategy": [0.1, 0.6, 0.6, 0.3, 0.3, 0.1],
-      "actionEv": [0.0, 0.0, 5.5, -0.9, 5.2, -1.4] }
+    {
+      "line": "",
+      "street": "flop",
+      "player": 0,
+      "potBb": 5.5,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "check",
+          "amountBb": 0
+        },
+        {
+          "kind": "bet",
+          "amountBb": 2.8
+        }
+      ],
+      "strategy": [
+        0.2,
+        0.8,
+        0.8,
+        0.2
+      ],
+      "actionEv": [
+        5.8,
+        1.2,
+        6.0,
+        0.9
+      ]
+    },
+    {
+      "line": "check",
+      "street": "flop",
+      "player": 1,
+      "potBb": 5.5,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "check",
+          "amountBb": 0
+        },
+        {
+          "kind": "bet",
+          "amountBb": 2.8
+        }
+      ],
+      "strategy": [
+        0.5,
+        0.9,
+        0.5,
+        0.1
+      ],
+      "actionEv": [
+        4.0,
+        1.5,
+        3.8,
+        1.4
+      ]
+    },
+    {
+      "line": "check/check",
+      "street": "turn",
+      "player": 0,
+      "potBb": 5.5,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "check",
+          "amountBb": 0
+        },
+        {
+          "kind": "bet",
+          "amountBb": 4.1
+        }
+      ],
+      "strategy": [
+        0.3,
+        0.7,
+        0.7,
+        0.3
+      ],
+      "actionEv": [
+        6.3,
+        1.0,
+        6.5,
+        0.8
+      ]
+    },
+    {
+      "line": "check/check/check",
+      "street": "turn",
+      "player": 1,
+      "potBb": 5.5,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "check",
+          "amountBb": 0
+        },
+        {
+          "kind": "bet",
+          "amountBb": 4.1
+        }
+      ],
+      "strategy": [
+        0.6,
+        0.8,
+        0.4,
+        0.2
+      ],
+      "actionEv": [
+        4.2,
+        1.3,
+        4.0,
+        1.1
+      ]
+    },
+    {
+      "line": "check/check/check/check",
+      "street": "river",
+      "player": 0,
+      "potBb": 5.5,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "check",
+          "amountBb": 0
+        },
+        {
+          "kind": "bet",
+          "amountBb": 5.5
+        }
+      ],
+      "strategy": [
+        0.4,
+        0.6,
+        0.6,
+        0.4
+      ],
+      "actionEv": [
+        6.8,
+        0.9,
+        7.0,
+        0.7
+      ]
+    },
+    {
+      "line": "check/bet2.8",
+      "street": "flop",
+      "player": 0,
+      "potBb": 8.3,
+      "handCount": 2,
+      "actions": [
+        {
+          "kind": "fold",
+          "amountBb": 0
+        },
+        {
+          "kind": "call",
+          "amountBb": 2.8
+        },
+        {
+          "kind": "raise",
+          "amountBb": 8.4
+        }
+      ],
+      "strategy": [
+        0.1,
+        0.6,
+        0.6,
+        0.3,
+        0.3,
+        0.1
+      ],
+      "actionEv": [
+        0.0,
+        0.0,
+        5.5,
+        -0.9,
+        5.2,
+        -1.4
+      ]
+    }
   ]
 }

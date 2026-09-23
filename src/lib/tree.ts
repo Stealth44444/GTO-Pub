@@ -39,8 +39,10 @@ export type SolvedSpot = {
   runout: { turn: string; river: string };
   startingPotBb: number;
   effectiveStackBb: number;
-  /** [OOP, IP]. strategy와 ev 배열의 핸드 순서가 이것이다. */
+  /** [OOP, IP]. strategy와 actionEv 배열의 핸드 순서가 이것이다. */
   handsByPlayer: [string[], string[]];
+  /** 레인지에서 각 핸드가 차지하는 비중. handsByPlayer와 같은 순서·길이. */
+  handWeightsByPlayer: [number[], number[]];
   nodes: TreeNode[];
 };
 
