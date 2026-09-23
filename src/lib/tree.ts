@@ -58,3 +58,15 @@ export function actionLabel(a: TreeAction): string {
   const base = KIND_LABEL[a.kind];
   return a.amountBb > 0 ? `${base} ${a.amountBb}bb` : base;
 }
+
+export function findNode(spot: SolvedSpot, line: string): TreeNode | undefined {
+  return spot.nodes.find((n) => n.line === line);
+}
+
+/** 해당 스트릿 시점의 보드. 런아웃이 고정이라 스트릿만으로 정해진다. */
+export function boardAt(spot: SolvedSpot, street: Street): string[] {
+  const board = [...spot.flop];
+  if (street === "turn" || street === "river") board.push(spot.runout.turn);
+  if (street === "river") board.push(spot.runout.river);
+  return board;
+}
