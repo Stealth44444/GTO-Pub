@@ -201,6 +201,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
             stackBb={situation.stackBb}
             anteBb={situation.anteBb}
             shoverPosition={situation.shoverPosition}
+            awaitingAction={!feedback}
             hand={hand}
           />
         </div>

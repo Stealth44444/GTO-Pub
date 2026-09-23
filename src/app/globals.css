@@ -81,3 +81,15 @@ body {
     stroke-dashoffset: 0;
   }
 }
+
+/* 액션 차례인 자리를 맥동시킨다. 색은 currentColor를 따라가므로
+   링 색만 바꾸면 발광 색도 같이 간다. */
+@keyframes gw-seat-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+}

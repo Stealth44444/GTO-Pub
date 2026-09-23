@@ -22,6 +22,7 @@ export default function PokerTable({
   stackBb,
   anteBb,
   shoverPosition,
+  awaitingAction,
   hand,
 }: {
   tableSize: number;
@@ -30,6 +31,8 @@ export default function PokerTable({
   anteBb: number;
   /** 히어로 앞에서 이미 올인한 자리. 없으면 null. */
   shoverPosition: string | null;
+  /** 아직 액션을 고르지 않은 상태. 차례인 자리를 발광시킬지 결정한다. */
+  awaitingAction: boolean;
   hand: HandInfo;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -158,7 +161,9 @@ export default function PokerTable({
                 <svg
                   key={dealId}
                   viewBox="0 0 100 100"
-                  className="pointer-events-none absolute inset-0 h-full w-full -rotate-90"
+                  // 좌석 원보다 조금 크게 잡아 테두리 바깥에 그린다. 같은 자리에
+                  // 겹쳐 그리면 원래 테두리와 구분이 안 된다.
+                  className="pointer-events-none absolute -inset-1 -rotate-90"
                   aria-hidden
                 >
                   <circle
@@ -166,18 +171,22 @@ export default function PokerTable({
                     cy="50"
                     r="47"
                     fill="none"
-                    strokeWidth="6"
+                    strokeWidth="5"
                     strokeLinecap="round"
                     strokeDasharray="295.3"
-                    stroke={
-                      isHero
+                    style={{
+                      // CSS 변수는 SVG 속성값에서 해석되지 않는다. 스타일로 줘야 한다.
+                      color: isHero
                         ? "var(--gw-accent)"
                         : isShover
                           ? "var(--gw-accent-strong)"
-                          : "var(--gw-border-strong)"
-                    }
-                    style={{
-                      animation: `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both`,
+                          : "var(--gw-border-strong)",
+                      stroke: "currentColor",
+                      animation:
+                        isHero && awaitingAction
+                          ? `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both,` +
+                            ` gw-seat-glow 1400ms ease-in-out ${order.indexOf(seat) * 110 + 180}ms infinite`
+                          : `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both`,
                     }}
                   />
                 </svg>
