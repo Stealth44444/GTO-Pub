@@ -70,3 +70,21 @@ export function boardAt(spot: SolvedSpot, street: Street): string[] {
   if (street === "river") board.push(spot.runout.river);
   return board;
 }
+
+/** 핸드 이름의 색인. 레인지 밖이면 -1. */
+export function handIndex(spot: SolvedSpot, player: 0 | 1, hand: string): number {
+  return spot.handsByPlayer[player].indexOf(hand);
+}
+
+/**
+ * 한 핸드의 액션별 빈도. strategy는 action * handCount + hand로 색인되므로
+ * 핸드 이름으로 바로 접근하면 안 된다.
+ */
+export function strategyFor(node: TreeNode, handIdx: number): number[] {
+  const handCount = node.ev.length;
+  return node.actions.map((_, a) => node.strategy[a * handCount + handIdx]);
+}
+
+export function evFor(node: TreeNode, handIdx: number): number {
+  return node.ev[handIdx];
+}

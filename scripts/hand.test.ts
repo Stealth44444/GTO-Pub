@@ -6,7 +6,10 @@ import {
   actionKey,
   actionLabel,
   boardAt,
+  evFor,
   findNode,
+  handIndex,
+  strategyFor,
   type SolvedSpot,
 } from "../src/lib/tree.ts";
 
@@ -47,6 +50,23 @@ console.log("보드");
 expect(boardAt(spot, "flop"), ["Td", "9d", "6h"], "플랍은 3장");
 expect(boardAt(spot, "turn"), ["Td", "9d", "6h", "2c"], "턴은 4장");
 expect(boardAt(spot, "river"), ["Td", "9d", "6h", "2c", "7s"], "리버는 5장");
+
+console.log("핸드별 전략·EV 색인");
+const root = findNode(spot, "")!;
+// strategy = [체크(AhAs), 체크(7c2d), 벳(AhAs), 벳(7c2d)]
+expect(handIndex(spot, 0, "AhAs"), 0, "OOP 첫 핸드 색인");
+expect(handIndex(spot, 0, "7c2d"), 1, "OOP 둘째 핸드 색인");
+expect(handIndex(spot, 1, "8h3s"), 1, "IP 둘째 핸드 색인");
+expect(handIndex(spot, 0, "QsQd"), -1, "레인지 밖 핸드는 -1");
+expect(strategyFor(root, 0), [0.2, 0.8], "AhAs는 체크 0.2 / 벳 0.8");
+expect(strategyFor(root, 1), [0.8, 0.2], "7c2d는 체크 0.8 / 벳 0.2");
+expect(evFor(root, 0), 6.0, "AhAs의 EV");
+expect(evFor(root, 1), 1.2, "7c2d의 EV");
+
+const faced = findNode(spot, "check/bet2.8")!;
+// 액션 3개 × 핸드 2개 = [폴드(h0),폴드(h1), 콜(h0),콜(h1), 레이즈(h0),레이즈(h1)]
+expect(strategyFor(faced, 0), [0.1, 0.6, 0.3], "AhAs는 폴드0.1/콜0.6/레이즈0.3");
+expect(strategyFor(faced, 1), [0.6, 0.3, 0.1], "7c2d는 폴드0.6/콜0.3/레이즈0.1");
 
 console.log(`\n통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);
