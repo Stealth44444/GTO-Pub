@@ -73,3 +73,13 @@ export function applyAction(
     history: [...state.history, { player: state.node.player, action, street: state.street }],
   };
 }
+
+/**
+ * 각 액션을 골랐을 때 최선 대비 잃는 bb. 최선 액션은 0이다.
+ * actionEvBb는 액션별 EV로, 액션 개수와 길이가 같아야 한다.
+ * 단위가 bb이므로 grading.ts의 경계를 그대로 쓸 수 있다.
+ */
+export function evLossByAction(actionEvBb: number[]): number[] {
+  const best = Math.max(...actionEvBb);
+  return actionEvBb.map((ev) => Number((best - ev).toFixed(4)));
+}

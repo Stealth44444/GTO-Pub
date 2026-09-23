@@ -12,7 +12,7 @@ import {
   strategyFor,
   type SolvedSpot,
 } from "../src/lib/tree.ts";
-import { applyAction, isOver, startHand } from "../src/lib/hand.ts";
+import { applyAction, evLossByAction, isOver, startHand } from "../src/lib/hand.ts";
 
 let passed = 0;
 let failed = 0;
@@ -98,6 +98,14 @@ expect(f.potBb, 8.3, "벳이 팟에 반영됨");
 f = applyAction(spot, f, 0); // OOP 폴드
 expect(isOver(f), true, "폴드하면 종료");
 expect(f.node, null, "종료 노드는 null");
+
+console.log("액션별 EV 손실");
+// 최선 대비 손실이므로 최선 액션은 0이어야 한다.
+const losses = evLossByAction([0.0, 5.5, 4.0]);
+expect(losses, [5.5, 0, 1.5], "최선이 0, 나머지는 그 차이");
+
+const allBest = evLossByAction([2.0, 2.0, 2.0]);
+expect(allBest, [0, 0, 0], "전부 같으면 손실 없음");
 
 console.log(`\n통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);
