@@ -10,7 +10,8 @@ import {
 } from "@/lib/scenarios";
 
 // 카테고리마다 색을 달리해 목록에서 한눈에 구분되게 한다.
-// 이용 가능한 모드만 브랜드 액센트(초록)를 쓰고, 준비 중인 모드는 다른 색조를 쓴다.
+// 올인 판단은 브랜드 액센트, 올인 대응은 같은 계열의 딥틸을 써서 둘이 한 묶음으로
+// 보이게 한다. 나머지는 서로 겹치지 않는 색조를 쓴다.
 const MODE_ICON: Record<ModeId, { tint: string; path: React.ReactNode }> = {
   // 올인 = 포커 칩
   pushfold: {
@@ -25,7 +26,7 @@ const MODE_ICON: Record<ModeId, { tint: string; path: React.ReactNode }> = {
   },
   // 올인 대응 = 남의 올인이 나에게 들어온다
   vsshove: {
-    tint: "bg-[#14b8a6]",
+    tint: "bg-[#0B666A]",
     path: (
       <>
         <circle cx="16" cy="12" r="5.5" />
@@ -178,7 +179,11 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                     </svg>
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block pr-16 text-sm font-bold text-[var(--gw-text-primary)]">
+                    <span
+                      className={`block text-sm font-bold text-[var(--gw-text-primary)] ${
+                        info.available ? "" : "pr-16"
+                      }`}
+                    >
                       {info.title}
                     </span>
                     <span className="mt-0.5 block text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
@@ -259,15 +264,13 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                   </div>
                 )}
 
-                <span
-                  className={`absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    info.available
-                      ? "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
-                      : "bg-[var(--gw-surface-3)] text-[var(--gw-text-muted)]"
-                  }`}
-                >
-                  {info.available ? "이용 가능" : "준비 중"}
-                </span>
+                {/* 배지는 준비 중일 때만. 이용 가능한 건 기본 상태이므로
+                    굳이 라벨을 붙일 이유가 없다. */}
+                {!info.available && (
+                  <span className="absolute right-3 top-3 rounded-full bg-[var(--gw-surface-3)] px-2 py-0.5 text-[10px] font-bold text-[var(--gw-text-muted)]">
+                    준비 중
+                  </span>
+                )}
               </div>
             );
           })}
