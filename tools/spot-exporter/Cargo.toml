@@ -1,0 +1,14 @@
+[package]
+name = "spot-exporter"
+version = "0.1.0"
+edition = "2021"
+
+# postflop-solver는 2023년에 개발이 멈춰 최신 Rust/의존성과 어긋난다.
+# 다만 소스를 고칠 필요는 없다 — bincode(파일 저장용, 우리는 안 씀)를 끄면
+# 남는 문제는 기본 거부로 바뀐 린트 하나뿐이고 그건 .cargo/config.toml에서 푼다.
+[dependencies]
+postflop-solver = { git = "https://github.com/b-inary/postflop-solver", default-features = false, features = ["rayon"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

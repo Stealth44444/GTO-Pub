@@ -1,0 +1,4 @@
+# postflop-solver의 action_tree.rs가 최신 Rust에서 기본 거부가 된 린트에 걸린다.
+# 2023년 코드라 그렇고 동작 자체는 그대로다. 의존성 소스를 고칠 수 없으므로 여기서 푼다.
+[build]
+rustflags = ["--allow", "dangerous_implicit_autorefs"]
