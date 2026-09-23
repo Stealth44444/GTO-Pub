@@ -44,6 +44,17 @@ expect(committed.SB, 0.5, "폴드한 SB의 0.5는 죽은 돈으로 남는다");
 expect(committed.UTG, 0, "블라인드를 안 낸 자리는 0");
 expect(committed.BB, 2.5, "BB는 콜해서 2.5");
 
+console.log("싱글레이즈 팟 — BB 앤티 1bb");
+// 타깃 게임. BTN 2.5 오픈에 BB가 받으면 팟은 2.5 + 2.5 + 0.5(SB) + 1(앤티) = 6.5.
+// 포스트플랍 스팟의 startingPotBb와 같아야 한다.
+const srpAnte = singleRaisedPotScript(9, "BTN", "BB", 2.5, 1);
+expect(potFromScript(9, 1, srpAnte, srpAnte.length), 6.5, "앤티 포함 최종 팟");
+expect(potFromScript(9, 1, srpAnte, 0), 2.5, "액션 전 팟은 0.5 + 1 + 앤티 1");
+const cAnte = committedBySeat(9, 1, srpAnte, srpAnte.length);
+// 앤티는 죽은 돈이라 콜 금액에 안 들어간다. BB의 총 투입은 2.5가 아니라 3.5다.
+expect(cAnte.BB, 3.5, "BB는 콜 2.5 + 앤티 1");
+expect(cAnte.BTN, 2.5, "BTN은 앤티를 내지 않는다");
+
 console.log("푸시/폴드");
 const pf = pushFoldScript(6, "BTN", null, 20, 1);
 expect(pf.map((s) => s.seat), ["UTG", "HJ", "CO"], "히어로 앞자리만 액션한다");

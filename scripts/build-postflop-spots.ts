@@ -13,6 +13,14 @@ const OUT_DIR = "public/postflop";
 const TAG = "srp-btn-bb-20bb";
 const RUNOUTS_PER_FLOP = 2;
 
+// 타깃 게임은 20bb 스택에 BB 앤티 1bb다(pushfold 데이터와 같은 전제여야 한다).
+// BTN이 2.5bb로 열고 BB가 받으면:
+//   팟   = BTN 2.5 + BB 2.5 + SB 0.5 + 앤티 1 = 6.5bb
+//   남은 = BTN 20-2.5 = 17.5 / BB 20-2.5-1 = 16.5 → 유효 16.5bb
+// 앤티를 빼면 SPR이 2.5가 아니라 3.6이 되어 전략이 통째로 달라진다.
+const POT_CHIPS = 65;
+const STACK_CHIPS = 165;
+
 /**
  * 보드 질감을 고르게 덮는 플랍 모음. 무작위로 뽑으면 비슷한 보드가 몰려서
  * 정작 배워야 할 상황(페어보드, 모노톤, 커넥티드 로우)이 빠진다.
@@ -107,6 +115,45 @@ function pickRunouts(flop: string, count: number): string[] {
   return out;
 }
 
+type SpotShape = {
+  startingPotBb: number;
+  rootEvByPlayer: [number[], number[]];
+  handWeightsByPlayer: [number[], number[]];
+};
+
+function weightedMean(values: number[], weights: number[]): number {
+  let sum = 0;
+  let total = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i] * weights[i];
+    total += weights[i];
+  }
+  return total > 0 ? sum / total : 0;
+}
+
+/**
+ * 플랍 루트에서 양쪽의 평균 EV를 더하면 그 시점의 팟이 되어야 한다. 한쪽이
+ * 가져가는 것이 곧 다른 쪽이 못 가져가는 것이기 때문이다.
+ *
+ * 다만 정확한 등식은 아니다. 두 레인지는 같은 카드를 쥘 수 없어 서로 상관돼
+ * 있는데, 각자 따로 가중평균하면 그 카드 제거 효과가 빠져 팟의 몇 % 만큼
+ * 어긋난다. 그래서 느슨하게 잡는다.
+ *
+ * 이 검사가 잡으려는 건 자릿수 사고다. EV를 칩 단위로 내보낸 적이 있었고,
+ * 그때 이 합이 정확히 10배로 벌어졌다. EV가 틀리면 채점이 통째로 틀린다.
+ */
+function assertZeroSum(spot: SpotShape, file: string): void {
+  const oop = weightedMean(spot.rootEvByPlayer[0], spot.handWeightsByPlayer[0]);
+  const ip = weightedMean(spot.rootEvByPlayer[1], spot.handWeightsByPlayer[1]);
+  const gap = Math.abs(oop + ip - spot.startingPotBb);
+  if (gap > Math.max(0.3, spot.startingPotBb * 0.05)) {
+    throw new Error(
+      `${file}: 루트 EV 합 ${(oop + ip).toFixed(3)}bb 가 팟 ${spot.startingPotBb}bb 와 ` +
+        `${gap.toFixed(3)}bb 어긋납니다. EV 단위(칩 vs bb)를 확인하세요.`,
+    );
+  }
+}
+
 type IndexEntry = {
   file: string;
   flop: string;
@@ -131,7 +178,14 @@ FLOPS.forEach((flop, i) => {
 
   const stdout = execFileSync(
     EXPORTER,
-    ["--flop", flop, "--runouts", runouts.join(","), "--outdir", OUT_DIR, "--tag", TAG],
+    [
+      "--flop", flop,
+      "--runouts", runouts.join(","),
+      "--outdir", OUT_DIR,
+      "--tag", TAG,
+      "--pot", String(POT_CHIPS),
+      "--stack", String(STACK_CHIPS),
+    ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
 
@@ -141,6 +195,7 @@ FLOPS.forEach((flop, i) => {
     // 원본 1MB를 그대로 두면 저장소가 50MB가 된다. 전송량은 어차피 압축돼
     // 같으므로, 압축본만 남기고 원본은 지운다. 앱이 받아서 푼다.
     const raw = readFileSync(`${OUT_DIR}/${file}`);
+    assertZeroSum(JSON.parse(raw.toString("utf8")) as SpotShape, file);
     const gz = gzipSync(raw, { level: 9 });
     writeFileSync(`${OUT_DIR}/${file}.gz`, gz);
     rmSync(`${OUT_DIR}/${file}`);

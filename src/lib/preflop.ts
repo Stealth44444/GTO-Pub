@@ -91,6 +91,17 @@ export function pushFoldScript(
 }
 
 /**
+ * 그 자리가 낸 앤티. BB 앤티 구조라 BB만 낸다.
+ *
+ * 앤티는 죽은 돈이어서 베팅을 맞추는 데 쓰이지 않는다. BB가 2.5bb 오픈에
+ * 콜하면 총 투입은 2.5가 아니라 2.5 + 앤티다. 이걸 빼먹으면 팟이 앤티만큼
+ * 작게 나온다.
+ */
+function anteOf(tableSize: number, seat: string, anteBb: number): number {
+  return seat === seatNames(tableSize)[tableSize - 1] ? anteBb : 0;
+}
+
+/**
  * 싱글레이즈 팟. 오프너가 레이즈하고 한 명이 받는다. 그 사이 자리는 폴드한다.
  * 포스트플랍 스팟(예: srp-btn-bb)이 전제하는 프리플랍이 바로 이 모양이다.
  *
@@ -109,12 +120,11 @@ export function singleRaisedPotScript(
   const steps: PreflopStep[] = [];
 
   names.forEach((seat, i) => {
-    if (i < openerIdx) {
-      steps.push({ seat, kind: "fold", committedBb: postedBlind(tableSize, seat, anteBb) });
-    } else if (i === openerIdx) {
-      steps.push({ seat, kind: "raise", committedBb: openToBb });
+    const toBb = openToBb + anteOf(tableSize, seat, anteBb);
+    if (i === openerIdx) {
+      steps.push({ seat, kind: "raise", committedBb: toBb });
     } else if (i === callerIdx) {
-      steps.push({ seat, kind: "call", committedBb: openToBb });
+      steps.push({ seat, kind: "call", committedBb: toBb });
     } else {
       steps.push({ seat, kind: "fold", committedBb: postedBlind(tableSize, seat, anteBb) });
     }

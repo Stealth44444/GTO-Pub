@@ -20,6 +20,9 @@ import PokerTable from "./PokerTable";
 
 const tableHand = ALL_HANDS[0];
 
+// 타깃 게임의 BB 앤티. 스팟 데이터가 이 값을 전제로 풀렸다(팟 6.5bb).
+const ANTE_BB = 1;
+
 type Feedback = {
   chosen: string;
   losses: number[];
@@ -98,11 +101,12 @@ export default function PostflopTrainer() {
     [heroPosition, opponentPosition, tableSize],
   );
 
-  // 이 스팟은 BTN이 오픈하고 BB가 받은 싱글레이즈 팟이다(startingPotBb 5.5).
-  // 전제를 화면에서 실제로 재생해야 팟이 1.5에서 5.5로 순간이동하지 않는다.
+  // 이 스팟은 BTN이 오픈하고 BB가 받은 싱글레이즈 팟이다. 전제를 화면에서 실제로
+  // 재생해야 팟이 순간이동하지 않는다.
+  // 팟 = 오픈 + 콜 + SB 0.5 + 앤티 → 오픈액을 팟에서 거꾸로 구한다.
   const preflopScript = useMemo(() => {
-    const openToBb = ((round?.spot.startingPotBb ?? 5.5) - 0.5) / 2;
-    return singleRaisedPotScript(tableSize, "BTN", "BB", openToBb, 0);
+    const openToBb = ((round?.spot.startingPotBb ?? 6.5) - 0.5 - ANTE_BB) / 2;
+    return singleRaisedPotScript(tableSize, "BTN", "BB", openToBb, ANTE_BB);
   }, [round?.spot.startingPotBb, tableSize]);
 
   const actionSeat = round?.state.node
@@ -218,7 +222,7 @@ export default function PostflopTrainer() {
             tableSize={tableSize}
             heroPosition={heroPosition}
             stackBb={spot.effectiveStackBb}
-            anteBb={0}
+            anteBb={ANTE_BB}
             shoverPosition={null}
             awaitingAction={Boolean(heroTurn && !feedback && tableReady)}
             hand={tableHand}

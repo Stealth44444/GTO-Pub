@@ -16,6 +16,15 @@ fn bb(chips: i32) -> f64 {
     (chips as f64 / 10.0 * 100.0).round() / 100.0
 }
 
+/// 솔버의 EV는 칩 단위다. bb로 바꾸고 0.01bb까지 남긴다 — 채점 최상위 밴드가
+/// 0.01bb라 그보다 거칠면 등급이 갈리지 않는다.
+///
+/// bb(x)는 정수 칩을 받는 함수라 실수 EV에 쓸 수 없다. bb((v*10).round())는
+/// x/10에 10을 도로 곱하는 꼴이라 변환이 일어나지 않고 칩 값이 그대로 나간다.
+fn ev_bb(chips: f32) -> f64 {
+    (chips as f64 / 10.0 * 100.0).round() / 100.0
+}
+
 fn round3(v: f32) -> f64 {
     (v as f64 * 1000.0).round() / 1000.0
 }
@@ -115,7 +124,7 @@ impl Exporter {
             "handCount": hand_count,
             "actions": actions,
             "strategy": strategy.iter().map(|v| round2(*v)).collect::<Vec<_>>(),
-            "actionEv": action_ev.iter().map(|v| bb((*v * 10.0).round() as i32)).collect::<Vec<_>>(),
+            "actionEv": action_ev.iter().map(|v| ev_bb(*v)).collect::<Vec<_>>(),
         }));
 
         let saved = game.history().to_vec();
@@ -233,9 +242,21 @@ fn main() {
         };
         ex.walk(&mut game, "", 0);
 
+        // 플랍 루트에서 양쪽의 핸드별 EV. 프리플랍 솔브에서 "콜하고 플랍을 본다"의
+        // 가치가 바로 이 값이다. 노드별 actionEv는 그 시점에 액션하는 쪽만 담으므로
+        // IP의 루트 EV는 여기서 따로 뽑아야 한다.
+        game.back_to_root();
+        game.cache_normalized_weights();
+        let root_ev: Vec<Vec<f64>> = (0..2)
+            .map(|p| {
+                game.expected_values(p).iter().map(|v| ev_bb(*v)).collect()
+            })
+            .collect();
+
         let spot = json!({
             "flop": flop_cards,
             "runout": { "turn": turn_str, "river": river_str },
+            "rootEvByPlayer": root_ev,
             "startingPotBb": bb(pot),
             "effectiveStackBb": bb(stack),
             "handsByPlayer": hands,
