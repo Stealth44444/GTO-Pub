@@ -12,6 +12,7 @@ import {
   strategyFor,
   type SolvedSpot,
 } from "../src/lib/tree.ts";
+import { applyAction, isOver, startHand } from "../src/lib/hand.ts";
 
 let passed = 0;
 let failed = 0;
@@ -67,6 +68,36 @@ const faced = findNode(spot, "check/bet2.8")!;
 // 액션 3개 × 핸드 2개 = [폴드(h0),폴드(h1), 콜(h0),콜(h1), 레이즈(h0),레이즈(h1)]
 expect(strategyFor(faced, 0), [0.1, 0.6, 0.3], "AhAs는 폴드0.1/콜0.6/레이즈0.3");
 expect(strategyFor(faced, 1), [0.6, 0.3, 0.1], "7c2d는 폴드0.6/콜0.3/레이즈0.1");
+
+console.log("핸드 진행");
+let st = startHand(spot);
+expect(st.line, "", "시작 라인은 빈 문자열");
+expect(st.street, "flop", "시작은 플랍");
+expect(st.board, ["Td", "9d", "6h"], "시작 보드는 3장");
+expect(st.potBb, 5.5, "시작 팟");
+expect(st.node?.player, 0, "OOP가 먼저 액션");
+expect(isOver(st), false, "시작은 진행 중");
+
+st = applyAction(spot, st, 0); // OOP 체크
+expect(st.line, "check", "체크 후 라인");
+expect(st.street, "flop", "아직 플랍");
+expect(st.node?.player, 1, "이제 IP 차례");
+
+st = applyAction(spot, st, 0); // IP 체크 → 턴
+expect(st.line, "check/check", "양쪽 체크 후 라인");
+expect(st.street, "turn", "턴으로 넘어감");
+expect(st.board, ["Td", "9d", "6h", "2c"], "턴 카드가 깔림");
+expect(st.history.length, 2, "히스토리 2개");
+
+console.log("종료 판정");
+let f = startHand(spot);
+f = applyAction(spot, f, 0); // OOP 체크
+f = applyAction(spot, f, 1); // IP 벳 2.8
+expect(f.line, "check/bet2.8", "벳 후 라인");
+expect(f.potBb, 8.3, "벳이 팟에 반영됨");
+f = applyAction(spot, f, 0); // OOP 폴드
+expect(isOver(f), true, "폴드하면 종료");
+expect(f.node, null, "종료 노드는 null");
 
 console.log(`\n통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);
