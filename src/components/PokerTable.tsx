@@ -16,6 +16,9 @@ import Card from "./Card";
 // 딜마다 증가하는 키. 링 애니메이션을 다시 돌리는 용도로만 쓴다.
 let dealCounter = 0;
 
+/** 앞자리 하나가 생각하고 액션하기까지의 시간. 9인에서 전부 돌면 약 1.5초다. */
+const SEAT_STEP_MS = 220;
+
 export default function PokerTable({
   tableSize,
   heroPosition,
@@ -62,9 +65,32 @@ export default function PokerTable({
   // 직전과 다르기만 하면 된다.
   const dealId = useMemo(() => `${hand.code}-${++dealCounter}`, [hand]);
 
-  // 액션 순서. 히어로까지의 자리만 이미 액션을 마쳤다.
+  // 액션 순서. 히어로 앞자리들이 차례로 액션한 뒤 히어로 차례가 온다.
   const order = useMemo(() => seatNames(tableSize), [tableSize]);
   const heroOrderIdx = order.indexOf(heroPosition);
+
+  // 지금 몇 번째 자리까지 액션이 왔는가. 앞자리들이 하나씩 생각하고 액션하는
+  // 모습을 보여주기 위한 값이다. heroOrderIdx에 도달하면 히어로 차례다.
+  const [acted, setActed] = useState(0);
+  const [seenDeal, setSeenDeal] = useState(dealId);
+  if (seenDeal !== dealId) {
+    // 새 핸드다. 렌더 중 상태 조정 — 이펙트로 되돌리면 한 프레임 깜빡인다.
+    setSeenDeal(dealId);
+    setActed(0);
+  }
+
+  useEffect(() => {
+    if (heroOrderIdx <= 0) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      const t = window.setTimeout(() => setActed(heroOrderIdx), 0);
+      return () => window.clearTimeout(t);
+    }
+    const timers = Array.from({ length: heroOrderIdx }, (_, i) =>
+      window.setTimeout(() => setActed(i + 1), (i + 1) * SEAT_STEP_MS),
+    );
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [dealId, heroOrderIdx]);
 
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
   const seats = useMemo(
@@ -99,6 +125,12 @@ export default function PokerTable({
         {seats.map(({ seat, top, left }) => {
           const isHero = seat === heroPosition;
           const isShover = seat === shoverPosition;
+          // 이 자리가 액션 순서상 몇 번째인지, 그리고 지금 어느 단계인지.
+          const orderIdx = order.indexOf(seat);
+          const resolved = orderIdx < acted; // 이미 액션을 마쳤다
+          const acting = orderIdx === acted; // 지금 이 자리 차례다
+          // 히어로는 사용자가 고를 때까지, 앞자리는 타이머가 넘어갈 때까지 발광한다.
+          const glowing = acting && (isHero ? awaitingAction : true);
           // 올인한 사람은 히어로보다 앞이지만 폴드가 아니다.
           const folded = !isHero && !isShover && isFoldedBeforeHero(tableSize, seat, heroPosition);
           const posted = isShover ? stackBb : postedBlind(tableSize, seat, anteBb);
@@ -128,7 +160,7 @@ export default function PokerTable({
                     <Card rank={hand.high} suit={highSuit} />
                     <Card rank={hand.low} suit={lowSuit} />
                   </div>
-                ) : !folded || isShover ? (
+                ) : !(resolved && folded) || isShover ? (
                   <div className="flex gap-0.5">
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
                     <span className="h-5 w-3.5 rounded-sm bg-[var(--gw-border-strong)]" />
@@ -157,7 +189,7 @@ export default function PokerTable({
               )}
 
               {/* 액션 순서대로 테두리가 차오른다. 히어로 뒤 자리는 아직 액션 전이라 비운다. */}
-              {order.indexOf(seat) <= heroOrderIdx && (
+              {orderIdx <= acted && (
                 <svg
                   key={dealId}
                   viewBox="0 0 100 100"
@@ -182,11 +214,10 @@ export default function PokerTable({
                           ? "var(--gw-accent-strong)"
                           : "var(--gw-border-strong)",
                       stroke: "currentColor",
-                      animation:
-                        isHero && awaitingAction
-                          ? `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both,` +
-                            ` gw-seat-glow 1400ms ease-in-out ${order.indexOf(seat) * 110 + 180}ms infinite`
-                          : `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both`,
+                      // 차례가 된 순간 이 요소가 처음 그려지므로 지연 없이 바로 찬다.
+                      animation: glowing
+                        ? "gw-seat-sweep 180ms ease-out both, gw-seat-glow 1400ms ease-in-out 180ms infinite"
+                        : "gw-seat-sweep 180ms ease-out both",
                     }}
                   />
                 </svg>
@@ -196,14 +227,20 @@ export default function PokerTable({
                 className={`flex h-full w-full flex-col items-center justify-center rounded-full border-[3px] text-center ${
                   isHero
                     ? "border-[var(--gw-accent)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
-                    : folded
+                    : resolved && folded
                       ? "border-[var(--gw-surface-2)] bg-[var(--gw-bg)] text-neutral-500"
                       : "border-[var(--gw-border)] bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
                 }`}
               >
                 <span className="text-[11px] font-bold leading-tight sm:text-xs">{seat}</span>
                 <span className="text-[10px] font-bold leading-tight tabular-nums">
-                  {folded ? "폴드" : isShover ? "올인" : seatStack}
+                  {resolved && folded
+                    ? "폴드"
+                    : resolved && isShover
+                      ? "올인"
+                      : acting && !isHero
+                        ? "…"
+                        : seatStack}
                 </span>
               </div>
             </div>
