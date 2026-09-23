@@ -66,6 +66,20 @@ export function actionLabel(a: TreeAction): string {
   return a.amountBb > 0 ? `${base} ${a.amountBb}bb` : base;
 }
 
+const SHORT_LABEL: Record<TreeActionKind, string> = {
+  check: "CHECK",
+  call: "CALL",
+  bet: "BET",
+  raise: "RAISE",
+  fold: "FOLD",
+  allin: "ALL-IN",
+};
+
+/** 좌석 원 안에 넣을 짧은 라벨. 금액까지 넣으면 원 밖으로 넘친다. */
+export function actionShortLabel(a: TreeAction): string {
+  return SHORT_LABEL[a.kind];
+}
+
 export function findNode(spot: SolvedSpot, line: string): TreeNode | undefined {
   return spot.nodes.find((n) => n.line === line);
 }

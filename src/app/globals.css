@@ -135,6 +135,44 @@ body {
   }
 }
 
+/* 체크는 돈이 안 움직이므로 강조색을 쓰지 않는다. 밝게 튀었다가 가라앉는다. */
+@keyframes gw-action-pop-check {
+  0% {
+    opacity: 0;
+    color: var(--gw-text-primary);
+    transform: scale(0.4);
+  }
+  55% {
+    opacity: 1;
+    color: var(--gw-text-primary);
+    transform: scale(1.75);
+  }
+  100% {
+    opacity: 1;
+    color: var(--gw-text-secondary);
+    transform: scale(1);
+  }
+}
+
+/* 콜은 받아주는 액션이라 벳·레이즈와 다른 색을 쓴다. */
+@keyframes gw-action-pop-call {
+  0% {
+    opacity: 0;
+    color: var(--gw-accent);
+    transform: scale(0.4);
+  }
+  55% {
+    opacity: 1;
+    color: var(--gw-accent);
+    transform: scale(1.75);
+  }
+  100% {
+    opacity: 1;
+    color: var(--gw-text-secondary);
+    transform: scale(1);
+  }
+}
+
 /* 낸 칩은 좌석에서 팟 쪽으로 밀려 나온다. 제자리에서 커지기만 하면 처음부터
    놓여 있던 것처럼 보이므로, 좌석 중심에서 출발해 제자리로 이동시킨다.
    --gw-chip-dx/dy는 좌석 중심에서 칩까지의 거리이고, 그만큼 되돌린 지점이
@@ -153,6 +191,25 @@ body {
   to {
     opacity: 1;
     transform: translate(-50%, -50%) translate(0, 0) scale(1);
+  }
+}
+
+/* 베팅이 맞으면 자리 앞의 칩이 가운데 팟으로 쓸려 들어간다. 그냥 사라지면
+   돈이 어디로 갔는지 안 보이고, 팟 숫자만 갑자기 커진다.
+   --gw-chip-tx/ty는 그 칩에서 팟 중앙까지의 거리다. */
+@keyframes gw-chip-to-pot {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(0, 0) scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate(var(--gw-chip-tx, 0px), var(--gw-chip-ty, 0px))
+      scale(0.5);
   }
 }
 

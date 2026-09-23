@@ -186,10 +186,14 @@ const asRange = (a: Float64Array) => {
 
 // 채점에 쓸 액션별 EV. 화면에 그대로 나가는 값이다.
 const btnOpenEv: number[] = [];
+// 3벳 올인에 콜할지도 채점 대상이다. 폴드는 -OPEN으로 고정이라 따로 안 내보낸다.
+const btnCallShoveEvBb: number[] = [];
 const bbEv: { fold: number; call: number; shove: number }[] = [];
 const bbFoldFreq = 1 - frequency(bbCall) - frequency(bbShove);
 for (let h = 0; h < N; h++) {
-  const vsShove = Math.max(btnCallShoveEv(h, bbShove), -OPEN);
+  const rawCallShove = btnCallShoveEv(h, bbShove);
+  btnCallShoveEvBb.push(round2(rawCallShove));
+  const vsShove = Math.max(rawCallShove, -OPEN);
   const vsCall = Number.isNaN(FLOP_EV[1][h]) ? -OPEN : FLOP_EV[1][h] - BTN_IN_ON_CALL;
   btnOpenEv.push(
     round2(
@@ -219,6 +223,9 @@ writeFileSync(
         open: asRange(btnOpen),
         callVsShove: asRange(btnCallShove),
         openEvBb: btnOpenEv,
+        // 3벳 올인에 직면했을 때. 폴드는 항상 -openToBb다.
+        callShoveEvBb: btnCallShoveEvBb,
+        foldToShoveEvBb: -OPEN,
       },
       bb: {
         call: asRange(bbCall),

@@ -71,6 +71,44 @@ fn street_name(board_len: usize) -> &'static str {
     }
 }
 
+/// 1차 솔브에서 각 노드의 전략을 걷어 온다. 내보낼 노드만 모으면 되므로
+/// 트리 전체가 아니라 지정한 런아웃을 따라간 경로만 본다.
+fn collect_locks(
+    game: &mut PostFlopGame,
+    runout: &[u8; 2],
+    floor: f32,
+    out: &mut Vec<(Vec<usize>, Vec<f32>)>,
+) {
+    if game.is_terminal_node() {
+        return;
+    }
+    if game.is_chance_node() {
+        let card = runout[game.current_board().len() - 3];
+        if game.possible_cards() & (1u64 << card) == 0 {
+            return;
+        }
+        let saved = game.history().to_vec();
+        game.play(card as usize);
+        collect_locks(game, runout, floor, out);
+        game.apply_history(&saved);
+        return;
+    }
+
+    // 바닥을 깐 전략. 빈도 0인 액션에도 최소 ε을 줘서 그 가지의 도달확률이
+    // 0이 되지 않게 한다. 0이면 솔버가 그 핸드의 EV를 통째로 0으로 돌려준다.
+    let strategy = game.strategy();
+    let floored: Vec<f32> = strategy.iter().map(|v| v.max(floor)).collect();
+    out.push((game.history().to_vec(), floored));
+
+    let n = game.available_actions().len();
+    let saved = game.history().to_vec();
+    for i in 0..n {
+        game.play(i);
+        collect_locks(game, runout, floor, out);
+        game.apply_history(&saved);
+    }
+}
+
 struct Exporter {
     nodes: Vec<Value>,
     runout: [u8; 2],
@@ -160,6 +198,13 @@ fn main() {
     let tag = arg("--tag", "spot");
     let stack: i32 = arg("--stack", "200").parse().expect("--stack은 정수 칩");
     let pot: i32 = arg("--pot", "55").parse().expect("--pot은 정수 칩");
+    // 프리플랍용 EV 표본을 뽑을 때 쓴다. 트리를 안 내보내므로 파일이 수십 KB로
+    // 떨어지고, 런아웃도 필요 없다 — 루트 EV는 모든 런아웃을 포함한 값이라
+    // 런아웃을 무엇으로 잡든 똑같이 나온다.
+    let ev_only = std::env::args().any(|a| a == "--ev-only");
+    // 전략에 깔 최소 빈도. 0이면 안 깐다(프리플랍용 EV 표본은 루트만 쓰므로 불필요).
+    let floor: f32 = arg("--floor", "0").parse().expect("--floor는 실수");
+    let target_pct: f32 = arg("--target-pct", "0.5").parse().expect("--target-pct는 실수");
 
     let runouts: Vec<(String, String)> = runouts_str
         .split(',')
@@ -211,17 +256,49 @@ fn main() {
         merging_threshold: 0.1,
     };
 
-    let action_tree = ActionTree::new(tree_config).unwrap();
-    let mut game = PostFlopGame::with_config(card_config, action_tree).unwrap();
-    game.allocate_memory(false);
+    let build = || {
+        let tree = ActionTree::new(tree_config.clone()).unwrap();
+        PostFlopGame::with_config(card_config.clone(), tree).unwrap()
+    };
 
-    let target = pot as f32 * 0.005; // 팟의 0.5%
+    let target = pot as f32 * (target_pct / 100.0);
+    let mut game = build();
+    game.allocate_memory(false);
     let expl = solve(&mut game, 1000, target, false);
     eprintln!(
         "솔브 완료 · 착취가능성 {:.4} (팟의 {:.3}%)",
         expl,
         100.0 * expl / pot as f32
     );
+
+    // 레인지를 벗어난 핸드도 채점하려면 모든 가지의 도달확률이 0이 아니어야 한다.
+    // 1차 전략에 최소 빈도를 깔아 잠그고 한 번 더 푼다. 잠근 전략이 이미 균형에
+    // 가까우므로 나머지도 거의 같은 답으로 수렴한다.
+    if floor > 0.0 && !runouts.is_empty() {
+        let first = [
+            card_from_str(&runouts[0].0).unwrap(),
+            card_from_str(&runouts[0].1).unwrap(),
+        ];
+        let mut locks = Vec::new();
+        game.back_to_root();
+        collect_locks(&mut game, &first, floor, &mut locks);
+
+        let mut floored = build();
+        floored.allocate_memory(false);
+        for (history, strategy) in &locks {
+            floored.apply_history(history);
+            floored.lock_current_strategy(strategy);
+        }
+        floored.back_to_root();
+        let expl2 = solve(&mut floored, 1000, target, false);
+        eprintln!(
+            "  바닥 {:.3} 적용 후 재솔브 · 잠근 노드 {}개 · 착취가능성 {:.4}",
+            floor,
+            locks.len(),
+            expl2
+        );
+        game = floored;
+    }
 
     game.back_to_root();
     let hands: Vec<Vec<String>> = (0..2)
@@ -241,6 +318,31 @@ fn main() {
         .collect();
 
     std::fs::create_dir_all(&outdir).unwrap();
+
+    if ev_only {
+        game.back_to_root();
+        game.cache_normalized_weights();
+        let root_ev: Vec<Vec<f64>> = (0..2)
+            .map(|p| game.expected_values(p).iter().map(|v| ev_bb(*v)).collect())
+            .collect();
+        let out = json!({
+            "flop": flop_cards,
+            "startingPotBb": bb(pot),
+            "effectiveStackBb": bb(stack),
+            "handsByPlayer": hands,
+            "handWeightsByPlayer": weights,
+            "rootEvByPlayer": root_ev,
+        });
+        let name = format!("{tag}-{flop_str}.json");
+        let path = format!("{outdir}/{name}");
+        std::fs::write(&path, serde_json::to_string(&out).unwrap()).unwrap();
+        println!("EV	{name}	{flop_str}	{expl:.4}");
+        eprintln!(
+            "  저장 {name} · {:.0}KB",
+            std::fs::metadata(&path).unwrap().len() as f64 / 1024.0
+        );
+        return;
+    }
 
     for (turn_str, river_str) in &runouts {
         game.back_to_root();

@@ -42,6 +42,21 @@ const EV_LOSS_BANDS: { maxLossBb: number; id: GradeId }[] = [
   { maxLossBb: 1.0, id: "wrong" },
 ];
 
+/**
+ * 이 핸드가 이 노드에서 채점 가능한가.
+ *
+ * 앞선 판단에서 솔버 레인지를 벗어나면(예: 폴드가 정답인데 콜했다) 그 뒤 노드의
+ * 도달 확률이 0이 되고, 솔버는 그런 핸드의 EV를 전부 0으로 돌려준다. 그대로
+ * 채점하면 모든 액션이 "손실 0 = 최선"이 되어 무엇을 해도 정답이 된다.
+ *
+ * 폴드가 있는 노드에서는 폴드 EV가 원래 정확히 0이므로, 하나가 0인 것만으로는
+ * 판단할 수 없다. 전부 0일 때만 도달 확률 0으로 본다 — 실제 노드라면 팟이
+ * 걸려 있어 적어도 한 액션은 0이 아니다.
+ */
+export function isGradable(actionEv: number[]): boolean {
+  return actionEv.length > 0 && actionEv.some((v) => Math.abs(v) >= 0.005);
+}
+
 export function gradeByEvLoss(evLossBb: number): Grade {
   const loss = Math.max(0, evLossBb);
   for (const band of EV_LOSS_BANDS) {

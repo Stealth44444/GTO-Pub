@@ -38,6 +38,22 @@ const FOLD_WAIT_SPREAD_MS = 200;
 /** 마지막 액션이 화면에 머무는 시간. 바로 다음 스트릿으로 넘어가면 못 보고 지나간다. */
 const LAST_ACTION_HOLD_MS = 620;
 
+/**
+ * 액션 종류별 팝업 애니메이션. 폴드는 붉게, 체크는 색 없이, 콜은 강조색,
+ * 벳·레이즈·올인은 진한 강조색이다.
+ *
+ * 클래스 이름을 이렇게 통째로 적어 둬야 한다 — Tailwind는 소스에 문자 그대로
+ * 있는 클래스만 찾아 CSS를 만들고, 템플릿 리터럴로 조립한 이름은 놓친다.
+ */
+const POP_CLASS: Record<string, string> = {
+  fold: "animate-[gw-action-pop-fold_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  check: "animate-[gw-action-pop-check_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  call: "animate-[gw-action-pop-call_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  bet: "animate-[gw-action-pop-allin_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  raise: "animate-[gw-action-pop-allin_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  allin: "animate-[gw-action-pop-allin_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+};
+
 export default function PokerTable({
   tableSize,
   heroPosition,
@@ -54,6 +70,10 @@ export default function PokerTable({
   foldedSeats,
   onSequenceComplete,
   preflopScript,
+  revealedSteps,
+  seatActions,
+  seatChips,
+  collectingChips,
 }: {
   tableSize: number;
   heroPosition: string;
@@ -79,16 +99,43 @@ export default function PokerTable({
    * (히어로 앞자리는 전부 폴드, shoverPosition만 올인).
    */
   preflopScript?: PreflopStep[];
+  /**
+   * 스크립트를 몇 스텝까지 보여줄지 부모가 직접 정할 때 쓴다. 프리플랍에서
+   * 사용자가 고를 때마다 스텝이 늘어나므로, 자체 타이머로는 재생 지점을 맞출 수
+   * 없다. 주지 않으면 지금까지처럼 스스로 한 자리씩 넘긴다.
+   */
+  revealedSteps?: number;
+  /**
+   * 플랍 이후 각 자리가 마지막으로 한 액션. 프리플랍은 스크립트에서 나오지만
+   * 포스트플랍 액션은 외부 핸드 상태에만 있으므로 여기로 받는다. 이게 없으면
+   * 체크·벳·콜·레이즈가 좌석에 아무 표시도 남기지 않는다.
+   */
+  seatActions?: Record<string, { label: string; kind: string } | undefined>;
+  /**
+   * 플랍 이후 각 자리가 이번 베팅 라운드에 낸 금액. 프리플랍 칩은 스크립트에서
+   * 나오지만 포스트플랍 베팅은 외부 핸드 상태에만 있다. 이게 없으면 상대가
+   * 얼마를 걸었는지 화면에서 알 수 없다.
+   *
+   * 실제 테이블처럼 칩은 자리 앞에 놓이고 팟에는 아직 안 들어가 있으므로,
+   * potBbOverride는 이 금액을 뺀 값이어야 두 번 세지 않는다.
+   */
+  seatChips?: Record<string, number>;
+  /** 베팅이 맞아 칩을 팟으로 쓸어 담는 중. 칩이 가운데로 날아간다. */
+  collectingChips?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   // 좌석을 외곽선 위에 정확히 놓으려면 컨테이너의 실제 가로/세로 비율이 필요하다.
   const [aspect, setAspect] = useState(0.66);
+  const [boxPx, setBoxPx] = useState({ w: 360, h: 545 });
 
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
     const update = () => {
-      if (box.clientHeight > 0) setAspect(box.clientWidth / box.clientHeight);
+      if (box.clientHeight > 0) {
+        setAspect(box.clientWidth / box.clientHeight);
+        setBoxPx({ w: box.clientWidth, h: box.clientHeight });
+      }
     };
     update();
     const observer = new ResizeObserver(update);
@@ -116,16 +163,19 @@ export default function PokerTable({
   // 스크립트를 몇 스텝까지 재생했는가. 앞자리들이 하나씩 생각하고 액션하는
   // 모습을 보여주기 위한 값이다. script.length에 도달하면 히어로 차례다.
   const order = useMemo(() => seatNames(tableSize), [tableSize]);
-  const [acted, setActed] = useState(0);
+  const [internalActed, setInternalActed] = useState(0);
+  const acted = revealedSteps ?? internalActed;
   const [seenDeal, setSeenDeal] = useState(dealId);
   if (seenDeal !== dealId) {
     // 새 핸드다. 렌더 중 상태 조정 — 이펙트로 되돌리면 한 프레임 깜빡인다.
     setSeenDeal(dealId);
-    setActed(0);
+    setInternalActed(0);
   }
 
+  const parentDriven = revealedSteps !== undefined;
+
   useEffect(() => {
-    if (actionSeat !== undefined) return;
+    if (actionSeat !== undefined || parentDriven) return;
     if (script.length === 0) {
       onSequenceComplete?.();
       return;
@@ -133,7 +183,7 @@ export default function PokerTable({
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
       const t = window.setTimeout(() => {
-        setActed(script.length);
+        setInternalActed(script.length);
         onSequenceComplete?.();
       }, 0);
       return () => window.clearTimeout(t);
@@ -144,13 +194,13 @@ export default function PokerTable({
         step.kind === "fold"
           ? FOLD_WAIT_MIN_MS + Math.random() * FOLD_WAIT_SPREAD_MS
           : SEAT_WAIT_MIN_MS + Math.random() * SEAT_WAIT_SPREAD_MS;
-      return window.setTimeout(() => setActed(i + 1), at);
+      return window.setTimeout(() => setInternalActed(i + 1), at);
     });
     // 마지막 액션을 한 박자 보여준 뒤에 넘긴다. 같은 렌더에서 넘기면 그 액션이
     // 뜨자마자 지워져 아무도 못 본다.
     timers.push(window.setTimeout(() => onSequenceComplete?.(), at + LAST_ACTION_HOLD_MS));
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [actionSeat, dealId, script, onSequenceComplete]);
+  }, [actionSeat, parentDriven, dealId, script, onSequenceComplete]);
 
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
   const externallyControlled = actionSeat !== undefined;
@@ -229,14 +279,25 @@ export default function PokerTable({
           const folded = externallyControlled
             ? Boolean(foldedSeats?.includes(seat))
             : step?.kind === "fold";
-          // 확정된 액션 문구. 액션을 마친 자리만 갖는다.
-          const actionText = resolved ? (step ? stepLabel(step) : folded ? "FOLD" : null) : null;
-          // 폴드만 붉게, 나머지 액션(레이즈·콜·올인)은 강조색으로 튀어나온다.
-          const actionAnimationClass =
-            actionText === "FOLD"
-              ? "animate-[gw-action-pop-fold_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]"
-              : "animate-[gw-action-pop-allin_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]";
-          const posted = chipsSwept ? 0 : (committed[seat] ?? 0);
+          // 확정된 액션 문구. 포스트플랍 액션이 있으면 그게 우선한다 —
+          // 프리플랍 스크립트는 이미 지나간 이야기다.
+          const postAction = seatActions?.[seat];
+          const actionText = postAction
+            ? postAction.label
+            : resolved
+              ? (step ? stepLabel(step) : folded ? "FOLD" : null)
+              : null;
+          const actionKind = postAction?.kind ?? (step?.kind ?? (folded ? "fold" : null));
+          // 폴드는 붉게, 체크는 색 없이, 콜은 강조색, 벳·레이즈·올인은 진한 강조색.
+          // 클래스 이름을 문자열로 조립하면 안 된다. Tailwind는 소스에 그대로
+          // 적힌 클래스만 보고 CSS를 만들기 때문에, 조립한 이름은 스타일이 없다.
+          const actionAnimationClass = POP_CLASS[actionKind ?? "bet"] ?? POP_CLASS.bet;
+          // 포스트플랍이면 이번 라운드 베팅액을, 아니면 프리플랍 누적액을 놓는다.
+          const posted = seatChips
+            ? (seatChips[seat] ?? 0)
+            : chipsSwept
+              ? 0
+              : (committed[seat] ?? 0);
           const seatStack = stackBb - (committed[seat] ?? 0);
           // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
           // 향하는 방향으로 밀어내면 위아래 좌석도 옆이 아니라 앞에 놓인다.
@@ -253,6 +314,11 @@ export default function PokerTable({
           // 칩은 committed에서 나오므로, 그 자리가 실제로 액션하기 전에는 블라인드만
           // 놓여 있다. 딜과 동시에 레이즈 칩이 놓여 미리 준비된 것처럼 보이지 않는다.
           const chipVisible = posted > 0;
+          // 칩에서 팟 중앙까지의 거리(px). 좌석 좌표는 %라 픽셀로 환산해야 한다.
+          const potCx = ((TABLE_FELT.left + TABLE_FELT.width / 2) / 100) * boxPx.w;
+          const potCy = ((TABLE_FELT.top + TABLE_FELT.height / 2) / 100) * boxPx.h;
+          const chipCx = (parseFloat(left) / 100) * boxPx.w + chipX;
+          const chipCy = (parseFloat(top) / 100) * boxPx.h + chipY;
           // 액션해서 나온 칩은 그 순간이 곧 액션 순간이라 지연이 없다.
           // 딜과 동시에 놓이는 블라인드만 SB→BB 순으로 살짝 어긋나게 낸다.
           const chipDelayMs = played ? 0 : seat === order[order.length - 1] ? 90 : 0;
@@ -285,8 +351,12 @@ export default function PokerTable({
 
               {chipVisible && (
                 <span
-                  key={`${dealId}-${seat}-${posted}`}
-                  className="absolute z-10 animate-[gw-chip-enter_520ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
+                  key={`${dealId}-${seat}-${posted}${collectingChips ? "-to-pot" : ""}`}
+                  className={`absolute z-10 motion-reduce:animate-none ${
+                    collectingChips
+                      ? "animate-[gw-chip-to-pot_460ms_cubic-bezier(0.55,0,0.7,0.2)_both]"
+                      : "animate-[gw-chip-enter_520ms_cubic-bezier(0.22,1,0.36,1)_both]"
+                  }`}
                   style={
                     {
                       left: `calc(50% + ${chipX}px)`,
@@ -295,7 +365,9 @@ export default function PokerTable({
                       // 키프레임이 이 거리만큼 되돌린 지점에서 출발한다.
                       "--gw-chip-dx": `${chipX}px`,
                       "--gw-chip-dy": `${chipY}px`,
-                      animationDelay: `${chipDelayMs}ms`,
+                      "--gw-chip-tx": `${Math.round(potCx - chipCx)}px`,
+                      "--gw-chip-ty": `${Math.round(potCy - chipCy)}px`,
+                      animationDelay: collectingChips ? "0ms" : `${chipDelayMs}ms`,
                     } as CSSProperties
                   }
                 >
@@ -375,7 +447,7 @@ export default function PokerTable({
                     바꾸면 React가 DOM을 재사용해 애니메이션이 다시 돌지 않는다. */}
                 {actionText ? (
                   <span
-                    key="acted"
+                    key={`acted-${actionText}`}
                     className={`text-xs font-black leading-tight ${actionAnimationClass} motion-reduce:animate-none`}
                   >
                     {actionText}

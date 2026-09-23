@@ -41,3 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 supabase/.temp
+
+# 익스포터 개발용 빌드 (수렴 작업이 target/을 쓰는 동안 따로 빌드할 때)
+tools/spot-exporter/target-dev/
+# 프리플랍 값 추출용 플랍 표본. 재생성 가능한 중간 산출물이라 커밋하지 않는다.
+scripts/data/flopev/
