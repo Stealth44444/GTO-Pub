@@ -38,3 +38,23 @@ export type SolvedSpot = {
   handsByPlayer: [string[], string[]];
   nodes: TreeNode[];
 };
+
+const KIND_LABEL: Record<TreeActionKind, string> = {
+  check: "체크",
+  call: "콜",
+  bet: "벳",
+  raise: "레이즈",
+  fold: "폴드",
+  allin: "올인",
+};
+
+/** 라인 문자열 조립용 키. 금액이 있는 액션만 금액을 붙인다. */
+export function actionKey(a: TreeAction): string {
+  return a.amountBb > 0 ? `${a.kind}${a.amountBb}` : a.kind;
+}
+
+/** 화면 표시용. 금액이 있는 액션만 금액을 붙인다. */
+export function actionLabel(a: TreeAction): string {
+  const base = KIND_LABEL[a.kind];
+  return a.amountBb > 0 ? `${base} ${a.amountBb}bb` : base;
+}
