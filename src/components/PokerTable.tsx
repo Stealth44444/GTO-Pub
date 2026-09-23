@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getTableSeats,
   isFoldedBeforeHero,
+  seatNames,
   postedBlind,
   randomSuits,
   TABLE_FELT,
@@ -11,6 +12,9 @@ import {
   type HandInfo,
 } from "@/lib/poker";
 import Card from "./Card";
+
+// 딜마다 증가하는 키. 링 애니메이션을 다시 돌리는 용도로만 쓴다.
+let dealCounter = 0;
 
 export default function PokerTable({
   tableSize,
@@ -49,6 +53,15 @@ export default function PokerTable({
   const potBb = shoverPosition
     ? preflopPot(anteBb) + stackBb - postedBlind(tableSize, shoverPosition, anteBb)
     : preflopPot(anteBb);
+
+  // 링 애니메이션은 마운트될 때 한 번 돈다. 새 핸드마다 다시 돌리려면 요소를
+  // 갈아끼워야 하므로, hand가 바뀔 때만 새 키를 만든다. 값 자체는 의미가 없고
+  // 직전과 다르기만 하면 된다.
+  const dealId = useMemo(() => `${hand.code}-${++dealCounter}`, [hand]);
+
+  // 액션 순서. 히어로까지의 자리만 이미 액션을 마쳤다.
+  const order = useMemo(() => seatNames(tableSize), [tableSize]);
+  const heroOrderIdx = order.indexOf(heroPosition);
 
   const [highSuit, lowSuit] = useMemo(() => randomSuits(hand.suited), [hand.suited]);
   const seats = useMemo(
@@ -138,6 +151,36 @@ export default function PokerTable({
                 <span className="absolute -right-2 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--gw-text-primary)] text-[10px] font-bold text-[var(--gw-bg)] shadow">
                   D
                 </span>
+              )}
+
+              {/* 액션 순서대로 테두리가 차오른다. 히어로 뒤 자리는 아직 액션 전이라 비운다. */}
+              {order.indexOf(seat) <= heroOrderIdx && (
+                <svg
+                  key={dealId}
+                  viewBox="0 0 100 100"
+                  className="pointer-events-none absolute inset-0 h-full w-full -rotate-90"
+                  aria-hidden
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="47"
+                    fill="none"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray="295.3"
+                    stroke={
+                      isHero
+                        ? "var(--gw-accent)"
+                        : isShover
+                          ? "var(--gw-accent-strong)"
+                          : "var(--gw-border-strong)"
+                    }
+                    style={{
+                      animation: `gw-seat-sweep 180ms ease-out ${order.indexOf(seat) * 110}ms both`,
+                    }}
+                  />
+                </svg>
               )}
 
               <div

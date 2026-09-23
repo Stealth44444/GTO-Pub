@@ -70,3 +70,14 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* 좌석 테두리가 액션 순서대로 차오르는 효과.
+   원 둘레는 viewBox 100×100에 r=47이므로 2πr ≈ 295.3이다. */
+@keyframes gw-seat-sweep {
+  from {
+    stroke-dashoffset: 295.3;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
