@@ -20,13 +20,18 @@ export type TreeNode = {
   /** 이 노드 시점의 팟(bb). 솔버가 계산한 값이라 앱이 다시 계산하지 않는다. */
   potBb: number;
   actions: TreeAction[];
+  /** 이 노드에서 액션할 플레이어의 핸드 수. strategy와 actionEv의 색인에 쓴다. */
+  handCount: number;
   /**
-   * 길이 = actions.length × 이 플레이어의 핸드 수.
+   * 길이 = actions.length × handCount.
    * 인덱스는 action * handCount + hand (postflop-solver 규약).
    */
   strategy: number[];
-  /** 길이 = 이 플레이어의 핸드 수. */
-  ev: number[];
+  /**
+   * 각 액션을 골랐을 때의 EV(bb). strategy와 같은 모양·같은 색인이다.
+   * 노드 전체의 EV가 아니라 액션별이어야 채점(최선 대비 손실)을 할 수 있다.
+   */
+  actionEv: number[];
 };
 
 export type SolvedSpot = {
@@ -81,10 +86,10 @@ export function handIndex(spot: SolvedSpot, player: 0 | 1, hand: string): number
  * 핸드 이름으로 바로 접근하면 안 된다.
  */
 export function strategyFor(node: TreeNode, handIdx: number): number[] {
-  const handCount = node.ev.length;
-  return node.actions.map((_, a) => node.strategy[a * handCount + handIdx]);
+  return node.actions.map((_, a) => node.strategy[a * node.handCount + handIdx]);
 }
 
-export function evFor(node: TreeNode, handIdx: number): number {
-  return node.ev[handIdx];
+/** 한 핸드의 액션별 EV(bb). 색인 규약은 strategyFor와 같다. */
+export function actionEvFor(node: TreeNode, handIdx: number): number[] {
+  return node.actions.map((_, a) => node.actionEv[a * node.handCount + handIdx]);
 }

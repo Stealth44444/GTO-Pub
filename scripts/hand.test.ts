@@ -6,7 +6,7 @@ import {
   actionKey,
   actionLabel,
   boardAt,
-  evFor,
+  actionEvFor,
   findNode,
   handIndex,
   strategyFor,
@@ -61,8 +61,8 @@ expect(handIndex(spot, 1, "8h3s"), 1, "IP 둘째 핸드 색인");
 expect(handIndex(spot, 0, "QsQd"), -1, "레인지 밖 핸드는 -1");
 expect(strategyFor(root, 0), [0.2, 0.8], "AhAs는 체크 0.2 / 벳 0.8");
 expect(strategyFor(root, 1), [0.8, 0.2], "7c2d는 체크 0.8 / 벳 0.2");
-expect(evFor(root, 0), 6.0, "AhAs의 EV");
-expect(evFor(root, 1), 1.2, "7c2d의 EV");
+expect(actionEvFor(root, 0), [5.8, 6.0], "AhAs는 체크 5.8 / 벳 6.0 → 벳이 낫다");
+expect(actionEvFor(root, 1), [1.2, 0.9], "7c2d는 체크 1.2 / 벳 0.9 → 체크가 낫다");
 
 const faced = findNode(spot, "check/bet2.8")!;
 // 액션 3개 × 핸드 2개 = [폴드(h0),폴드(h1), 콜(h0),콜(h1), 레이즈(h0),레이즈(h1)]
@@ -101,8 +101,10 @@ expect(f.node, null, "종료 노드는 null");
 
 console.log("액션별 EV 손실");
 // 최선 대비 손실이므로 최선 액션은 0이어야 한다.
-const losses = evLossByAction([0.0, 5.5, 4.0]);
-expect(losses, [5.5, 0, 1.5], "최선이 0, 나머지는 그 차이");
+// 픽스처의 실제 값을 쓴다: AhAs가 벳에 직면했을 때 폴드0 / 콜5.5 / 레이즈5.2
+const losses = evLossByAction(actionEvFor(faced, 0));
+expect(losses, [5.5, 0, 0.3], "콜이 최선, 폴드는 5.5bb 손해");
+expect(evLossByAction(actionEvFor(faced, 1)), [0, 0.9, 1.4], "7c2d는 폴드가 최선");
 
 const allBest = evLossByAction([2.0, 2.0, 2.0]);
 expect(allBest, [0, 0, 0], "전부 같으면 손실 없음");
