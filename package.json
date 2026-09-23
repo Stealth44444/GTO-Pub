@@ -11,7 +11,9 @@
     "solver:equity": "node --experimental-strip-types scripts/build-equity.ts",
     "solver:pushfold": "node --experimental-strip-types scripts/solve-pushfold.ts",
     "grading:test": "node --experimental-strip-types scripts/grading.test.ts",
-    "hand:test": "node --experimental-strip-types scripts/hand.test.ts"
+    "hand:test": "node --experimental-strip-types scripts/hand.test.ts",
+    "preflop:test": "node --experimental-strip-types scripts/preflop.test.ts",
+    "spots:build": "node --experimental-strip-types scripts/build-postflop-spots.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

@@ -272,10 +272,10 @@ export function randomPosition(): Position {
   return POSITIONS[Math.floor(Math.random() * POSITIONS.length)];
 }
 
-// 카드 표시용 슈트 — 3종만 순환 사용 (다이아는 카드 디자인 시스템에서 별도 정의 안 함).
-export type Suit = "s" | "h" | "c";
+// 카드 표시용 슈트.
+export type Suit = "s" | "h" | "c" | "d";
 
-const ALL_SUITS: Suit[] = ["s", "h", "c"];
+const ALL_SUITS: Suit[] = ["s", "h", "c", "d"];
 
 // 수티드면 두 카드에 같은 슈트를, 오프수트/페어면 서로 다른 슈트 두 개를 무작위로 배정.
 export function randomSuits(suited: boolean): [Suit, Suit] {

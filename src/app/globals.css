@@ -18,12 +18,16 @@
   --gw-accent: #97FEED;
   --gw-accent-strong: #35A29F;
   --gw-danger: #e0525f;
+  --gw-action-fold: var(--gw-danger);
+  --gw-action-allin: var(--gw-accent-strong);
   --gw-card-spade: #504f4f;
   --gw-card-heart: #ad0e04;
   --gw-card-club: #0ead2c;
+  --gw-card-diamond: #0000ff;
   --gw-card-spade-ink: #2b2a2a;
   --gw-card-heart-ink: #5f0802;
   --gw-card-club-ink: #085f18;
+  --gw-card-diamond-ink: #000080;
   --gw-radius-control: 6px;
   --gw-radius-card: 6px;
   --gw-card-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
@@ -75,7 +79,7 @@ body {
    원 둘레는 viewBox 100×100에 r=47이므로 2πr ≈ 295.3이다. */
 @keyframes gw-seat-sweep {
   from {
-    stroke-dashoffset: 295.3;
+    stroke-dashoffset: 297.2;
   }
   to {
     stroke-dashoffset: 0;
@@ -94,20 +98,72 @@ body {
   }
 }
 
-/* 액션이 확정되는 순간 텍스트가 튀어나온다. 좌석 글씨가 작아서
-   살짝 넘겼다가 제자리로 돌아오는 편이 눈에 걸린다. */
-@keyframes gw-action-pop {
+/* 액션이 확정되는 순간 텍스트가 튀어나오고, 복귀할 때 기존 색으로 돌아간다. */
+@keyframes gw-action-pop-fold {
   0% {
     opacity: 0;
-    transform: scale(0.5);
+    color: var(--gw-action-fold);
+    transform: scale(0.4);
   }
-  60% {
+  55% {
     opacity: 1;
-    transform: scale(1.18);
+    color: var(--gw-action-fold);
+    transform: scale(1.75);
   }
   100% {
     opacity: 1;
+    color: var(--gw-text-secondary);
     transform: scale(1);
+  }
+}
+
+@keyframes gw-action-pop-allin {
+  0% {
+    opacity: 0;
+    color: var(--gw-action-allin);
+    transform: scale(0.4);
+  }
+  55% {
+    opacity: 1;
+    color: var(--gw-action-allin);
+    transform: scale(1.75);
+  }
+  100% {
+    opacity: 1;
+    color: var(--gw-text-secondary);
+    transform: scale(1);
+  }
+}
+
+/* 낸 칩은 좌석에서 팟 쪽으로 밀려 나온다. 제자리에서 커지기만 하면 처음부터
+   놓여 있던 것처럼 보이므로, 좌석 중심에서 출발해 제자리로 이동시킨다.
+   --gw-chip-dx/dy는 좌석 중심에서 칩까지의 거리이고, 그만큼 되돌린 지점이
+   출발점이다. translate(-50%,-50%)는 칩 자체를 좌표에 중심 정렬하는 값이라
+   모든 구간에 그대로 들어가야 한다. */
+@keyframes gw-chip-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%)
+      translate(calc(var(--gw-chip-dx, 0px) * -1), calc(var(--gw-chip-dy, 0px) * -1))
+      scale(0.55);
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(0, 0) scale(1);
+  }
+}
+
+@keyframes gw-card-deal {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.88) rotate(5deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0);
   }
 }
 

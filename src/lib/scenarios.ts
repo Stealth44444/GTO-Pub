@@ -48,8 +48,7 @@ export const MODES: ModeInfo[] = [
     id: "postflop",
     title: "플랍 이후 판단",
     summary: "보드가 깔린 뒤 벳·체크·폴드를 고릅니다.",
-    available: false,
-    unavailableReason: "레인지 데이터 계산 전입니다",
+    available: true,
   },
   {
     id: "icm",
@@ -217,8 +216,7 @@ export function solutionFor(
     const freq = getActionFrequency(situation.position as Position, handCode);
     return { open: freq.open, fold: freq.fold };
   }
-  // 준비 중인 모드. 메뉴에서 시작이 막혀 있어 여기 닿지 않지만,
-  // 다른 모드의 정답을 잘못 돌려주느니 빈 값을 낸다.
+  // 아직 전용 트레이너가 연결되지 않은 모드.
   return {};
 }
 

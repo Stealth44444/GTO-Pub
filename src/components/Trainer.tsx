@@ -6,7 +6,6 @@ import {
   ACTION_LABEL,
   evLossFor,
   actionEvFor,
-  exploitabilityFor,
   randomSituation,
   solutionFor,
   type ActionFrequencies,
@@ -152,7 +151,6 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
   }, [round]);
 
   const { situation, hand } = round;
-  const exploitability = exploitabilityFor(situation);
   const accuracy = stats.attempts === 0 ? 0 : Math.round((stats.correct / stats.attempts) * 100);
 
   if (!dataReady) {
@@ -270,7 +268,7 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
                     <span className="w-12 shrink-0 text-right text-sm font-bold tabular-nums text-[var(--gw-text-secondary)]">
                       {feedback.solution[action] ?? 0}%
                     </span>
-                    <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-[var(--gw-text-muted)]">
+                    <span className="w-20 shrink-0 text-right text-sm font-bold tabular-nums text-[var(--gw-text-secondary)]">
                       {ev === undefined ? "" : formatEv(ev)}
                     </span>
                   </div>
@@ -291,13 +289,6 @@ export default function Trainer({ scenario }: { scenario: Scenario }) {
                 />
               ))}
             </div>
-
-            {exploitability !== null && (
-              <p className="mt-3 text-[10px] leading-relaxed text-[var(--gw-text-muted)]">
-                이 스팟의 계산 오차는 {exploitability}bb입니다. 직접 계산한 값이라 재현할 수
-                있습니다.
-              </p>
-            )}
 
             <div className="mt-4 grid w-full grid-cols-[1fr_1.4fr] gap-2">
               <button
