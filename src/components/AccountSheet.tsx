@@ -18,7 +18,14 @@ const serverIdentity = (): Identity | null => null;
  * 눌러본 사람이 고장으로 받아들인다. 무엇이 준비됐고 무엇이 안 됐는지,
  * 지금 기록이 어디에 남는지를 그대로 쓴다.
  */
-export default function AccountSheet({ onClose }: { onClose: () => void }) {
+export default function AccountSheet({
+  onClose,
+  onOpenGuide,
+}: {
+  onClose: () => void;
+  /** 처음 안내를 다시 연다. 한 번 넘긴 사람이 되돌아올 길이 있어야 한다. */
+  onOpenGuide: () => void;
+}) {
   const identity = useSyncExternalStore(noop, clientIdentity, serverIdentity);
 
   return (
@@ -69,6 +76,18 @@ export default function AccountSheet({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+
+        <span className="gw-label-ko mt-6 block">앱 사용법</span>
+        <button
+          type="button"
+          onClick={onOpenGuide}
+          className="mt-2 flex w-full items-center justify-between rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
+        >
+          <span className="text-[14px] font-semibold text-[var(--gw-text-primary)]">
+            처음 안내 다시 보기
+          </span>
+          <span className="gw-label-ko text-[10px]">4장</span>
+        </button>
 
         <button
           type="button"

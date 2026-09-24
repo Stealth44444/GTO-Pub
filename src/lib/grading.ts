@@ -43,6 +43,18 @@ const EV_LOSS_BANDS: { maxLossBb: number; id: GradeId }[] = [
 ];
 
 /**
+ * 등급마다 어느 손실 구간인가. 안내 화면이 경계를 직접 적지 않게 한다 —
+ * 두 군데에 적히면 한쪽만 고쳐져 화면이 거짓말을 하게 된다.
+ */
+export function gradeBandText(id: GradeId): string {
+  const i = EV_LOSS_BANDS.findIndex((b) => b.id === id);
+  if (i < 0) return `${EV_LOSS_BANDS[EV_LOSS_BANDS.length - 1].maxLossBb}bb 초과`;
+  const upper = EV_LOSS_BANDS[i].maxLossBb;
+  const lower = i === 0 ? 0 : EV_LOSS_BANDS[i - 1].maxLossBb;
+  return i === 0 ? `${upper}bb 이하` : `${lower} ~ ${upper}bb`;
+}
+
+/**
  * 이 핸드가 이 노드에서 채점 가능한가.
  *
  * 앞선 판단에서 솔버 레인지를 벗어나면(예: 폴드가 정답인데 콜했다) 그 뒤 노드의
