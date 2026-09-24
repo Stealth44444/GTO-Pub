@@ -104,3 +104,29 @@ create policy "anon read training solutions" on training_solutions
 
 create policy "anon read range data" on range_data
   for select using (true);
+
+-- 한 판이 프리플랍부터 리버까지 이어지면서, 한 행 = 한 판단이 되었다.
+-- (마이그레이션 attempts_support_full_hand)
+--
+-- 포스트플랍 액션을 허용한다.
+alter table training_attempts drop constraint if exists training_attempts_user_action_check;
+alter table training_attempts drop constraint if exists training_attempts_correct_action_check;
+alter table training_attempts
+  add constraint training_attempts_user_action_check
+  check (user_action in (''shove'',''call'',''open'',''fold'',''check'',''bet'',''raise'',''allin''));
+alter table training_attempts
+  add constraint training_attempts_correct_action_check
+  check (correct_action is null or
+         correct_action in (''shove'',''call'',''open'',''fold'',''check'',''bet'',''raise'',''allin''));
+
+-- 채점할 수 없는 판단이 있다. 앞선 실수로 솔버 레인지를 벗어나면 비교할 정답이
+-- 없으므로, 정답과 정오답을 비워 둘 수 있어야 한다.
+alter table training_attempts alter column correct_action drop not null;
+alter table training_attempts alter column is_correct drop not null;
+
+-- 같은 판에서 나온 판단들을 묶고, 어느 스트릿이었는지와 보드를 남긴다.
+alter table training_attempts add column if not exists hand_id uuid;
+alter table training_attempts add column if not exists street text
+  check (street is null or street in (''preflop'',''flop'',''turn'',''river''));
+alter table training_attempts add column if not exists board text;
+create index if not exists training_attempts_hand_id_idx on training_attempts (hand_id);

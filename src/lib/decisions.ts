@@ -18,10 +18,17 @@ export type DecisionRow = {
 export type Decision = {
   /** PREFLOP / FLOP / TURN / RIVER */
   street: string;
+  /** 화면에 보이는 문구. "벳 3.3bb" */
   chosen: string;
+  /** 기록에 남는 종류. "bet" — 라벨은 금액이 붙어 집계할 수 없다. */
+  chosenKind: string;
+  /** 가장 EV가 높았던 액션의 종류. 채점 불가면 null. */
+  bestKind: string | null;
   lossBb: number | null;
   grade: Grade | null;
   rows: DecisionRow[];
+  /** 그 시점의 보드. 프리플랍은 빈 배열. */
+  board: string[];
 };
 
 /**
@@ -36,6 +43,8 @@ export function makeDecision(
   labels: string[],
   evBb: (number | null)[],
   chosenIndex: number,
+  kinds: string[] = [],
+  board: string[] = [],
 ): Decision {
   // 값이 없는 액션은 비교에서 빼야 한다. 0으로 채우면 안 된다 — BB에게 0 EV는
   // 폴드(-2bb)보다 훨씬 좋은 값이라, 값이 없다는 이유로 최선이 되어버린다.
@@ -46,12 +55,17 @@ export function makeDecision(
     gradable && v !== null ? Number((best - v).toFixed(2)) : null,
   );
   const lossBb = losses[chosenIndex];
+  // 손실 0인 액션이 최선이다. 채점할 수 없으면 최선도 없다.
+  const bestIndex = gradable ? losses.findIndex((v) => v === 0) : -1;
   return {
     street,
     chosen: labels[chosenIndex],
+    chosenKind: kinds[chosenIndex] ?? labels[chosenIndex],
+    bestKind: bestIndex >= 0 ? (kinds[bestIndex] ?? labels[bestIndex]) : null,
     lossBb,
     grade: lossBb === null ? null : gradeByEvLoss(lossBb),
     rows: labels.map((label, i) => ({ label, evBb: evBb[i], lossBb: losses[i] })),
+    board,
   };
 }
 

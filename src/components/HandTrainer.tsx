@@ -26,6 +26,8 @@ import {
   type SpotEntry,
 } from "@/lib/spotLibrary";
 import { DEFAULT_SCENARIO } from "@/lib/scenarios";
+import { ensureGuestUser, logHand } from "@/lib/attempts";
+import { currentUserId } from "@/lib/session";
 import PokerTable from "./PokerTable";
 
 const PREFLOP = preflopData as unknown as PreflopData;
@@ -88,6 +90,8 @@ export default function HandTrainer() {
   const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
+  /** 이미 기록을 남긴 판의 id. 한 판에 한 번만 쓴다. */
+  const loggedRef = useRef<number | null>(null);
 
   const tableSize = DEFAULT_SCENARIO.tableSize;
 
@@ -100,6 +104,7 @@ export default function HandTrainer() {
     clearTimers();
     setDecisions([]);
     setEnding(null);
+    loggedRef.current = null;
     setPhase("preflop");
     setRevealed(0);
     setRound(freshRound());
@@ -134,7 +139,17 @@ export default function HandTrainer() {
   useEffect(() => {
     if (!round || !allRevealed || !outcome || phase !== "preflop") return;
     if (outcome.kind !== "flop") {
-      const t = window.setTimeout(() => setPhase("over"), 500);
+      // 마지막 액션을 한 박자 보여준 뒤에 결과로 넘긴다.
+      const note =
+        outcome.kind === "allin"
+          ? "프리플랍 올인으로 끝났습니다"
+          : outcome.by === round.heroSeat
+            ? "내가 접어 핸드가 끝났습니다"
+            : "상대가 접어 핸드가 끝났습니다";
+      const t = window.setTimeout(() => {
+        setEnding(note);
+        setPhase("over");
+      }, 500);
       timers.current.push(t);
       return () => window.clearTimeout(t);
     }
@@ -256,13 +271,49 @@ export default function HandTrainer() {
     );
   }, [ending, round]);
 
+  /**
+   * 판이 끝나면 그 판의 판단을 한 번에 남긴다.
+   *
+   * 판단마다 바로 쓰지 않는 이유: 중간에 앱을 닫으면 반쯤 기록된 판이 남고,
+   * 나중에 누수를 뽑을 때 "이 판에서 무슨 일이 있었나"를 온전히 볼 수 없다.
+   * loggedRef로 한 판에 한 번만 쓴다 — 결과 화면이 여러 번 렌더돼도 상관없게.
+   */
+  useEffect(() => {
+    if ((!ending && phase !== "over") || !round || decisions.length === 0) return;
+    if (loggedRef.current === round.id) return;
+    loggedRef.current = round.id;
+    const userId = currentUserId();
+    if (!userId) return;
+    void ensureGuestUser(userId).then(() =>
+      logHand({
+        userId,
+        mode: "hand",
+        tableSize,
+        stackBb: PREFLOP.stackBb,
+        anteBb: PREFLOP.anteBb,
+        position: round.heroSeat,
+        handCode: round.pre.heroHand,
+        decisions: decisions.map((d) => ({
+          street: d.street,
+          userAction: d.chosenKind,
+          correctAction: d.bestKind,
+          evLossBb: d.lossBb,
+          board: d.board,
+        })),
+      }),
+    );
+  }, [ending, phase, round, decisions, tableSize]);
+
   const choosePreflop = (action: PreflopAction) => {
     if (!round?.pre.turn || ending || !allRevealed) return;
     const turn = round.pre.turn;
     const labels = turn.actions.map((a) => actionLabelAt(PREFLOP, turn.node, a));
     const i = turn.actions.indexOf(action);
     // turn.evBb에는 null이 섞일 수 있다(레인지 밖 핸드의 콜). 그대로 넘긴다.
-    setDecisions((prev) => [...prev, makeDecision("PREFLOP", labels, turn.evBb, i)]);
+    setDecisions((prev) => [
+      ...prev,
+      makeDecision("PREFLOP", labels, turn.evBb, i, [...turn.actions]),
+    ]);
     setRound((cur) =>
       cur ? { ...cur, pre: applyPreflop(PREFLOP, cur.pre, action, Math.random) } : cur,
     );
@@ -276,7 +327,14 @@ export default function HandTrainer() {
     // 핸드를 끝내는 액션이든 아니든 똑같이 채점해서 쌓는다.
     setDecisions((prev) => [
       ...prev,
-      makeDecision(round.post!.street.toUpperCase(), labels, ev, index),
+      makeDecision(
+        round.post!.street.toUpperCase(),
+        labels,
+        ev,
+        index,
+        node.actions.map((a) => a.kind),
+        round.post!.board,
+      ),
     ]);
     const next = applyAction(round.spot, round.post, index);
     if (next.node === null) {

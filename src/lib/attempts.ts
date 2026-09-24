@@ -48,3 +48,55 @@ export async function logAttempt(params: {
   });
   if (error) console.error("Failed to log attempt", error.message);
 }
+
+/**
+ * 한 판에서 내린 판단들을 한꺼번에 남긴다.
+ *
+ * 판단마다 한 행이고, hand_id로 묶는다. 한 번에 넣는 이유는 반쯤 기록된 판이
+ * 남지 않게 하기 위해서다 — 나중에 누수를 뽑을 때 "이 판에서 무슨 일이
+ * 있었나"를 온전히 볼 수 있어야 한다.
+ *
+ * 채점하지 못한 판단도 남긴다. 정답이 없다는 사실 자체가 기록이고, 레인지를
+ * 얼마나 자주 벗어나는지도 볼 만한 값이다.
+ */
+export async function logHand(params: {
+  userId: string;
+  mode: string;
+  tableSize: number;
+  stackBb: number;
+  anteBb: number;
+  /** 히어로 자리. 한 판 안에서는 바뀌지 않는다. */
+  position: string;
+  handCode: string;
+  decisions: {
+    /** PREFLOP / FLOP / TURN / RIVER */
+    street: string;
+    userAction: string;
+    correctAction: string | null;
+    evLossBb: number | null;
+    /** 그 시점의 보드. 프리플랍은 비어 있다. */
+    board?: string[];
+  }[];
+}) {
+  if (!supabase || !params.userId || params.decisions.length === 0) return;
+  const handId = crypto.randomUUID();
+  const rows = params.decisions.map((d) => ({
+    user_id: params.userId,
+    hand_id: handId,
+    mode: params.mode,
+    table_size: params.tableSize,
+    stack_bb: params.stackBb,
+    ante_bb: params.anteBb,
+    position: params.position,
+    hand_code: params.handCode,
+    street: d.street.toLowerCase(),
+    board: d.board?.length ? d.board.join(" ") : null,
+    user_action: d.userAction,
+    correct_action: d.correctAction,
+    // 채점하지 못했으면 정오답도 없다.
+    is_correct: d.correctAction === null ? null : d.userAction === d.correctAction,
+    ev_loss_bb: d.evLossBb,
+  }));
+  const { error } = await supabase.from("training_attempts").insert(rows);
+  if (error) console.error("Failed to log hand", error.message);
+}
