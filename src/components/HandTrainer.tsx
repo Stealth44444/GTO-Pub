@@ -48,24 +48,32 @@ const TABLE_SIZE = SEATS_DATA.tableSize;
 const ACTION_BAR_MIN_H = "70px";
 
 /**
- * 프리플랍이 닫히고 플랍이 나오기까지의 사이.
+ * 포스트플랍으로 넘어가고 플랍이 나오기까지의 사이.
  *
- * 칩이 팟으로 쓸려 들어가는 데 460ms가 걸린다. 그게 끝나기도 전에 카드가
- * 놓이면 두 가지가 겹쳐서, 플랍이 어디선가 튀어나온 것처럼 보인다. 딜러도
- * 팟을 정리하고 한 박자 쉰 다음에 깐다.
+ * 칩은 넘어가기 전에 이미 팟으로 쓸려 들어갔다(PREFLOP_SWEEP_MS). 여기서는
+ * 액션 표시가 지워진 테이블을 한 박자 보여줄 뿐이다 — 지워지는 것과 카드가
+ * 놓이는 것이 같은 프레임이면 플랍이 어디선가 튀어나온 것처럼 보인다.
  *
  * 보드를 받아오는 시간과 무관하게 일정해야 한다 — 받아오는 시간은 판마다
  * 다르고, 그러면 리듬이 판마다 달라진다.
  */
-const FLOP_BEAT_MS = 420;
+const FLOP_BEAT_MS = 280;
 
 /**
- * 마지막 프리플랍 액션이 뜨고부터 포스트플랍으로 넘어가기까지.
+ * 마지막 프리플랍 액션이 뜨고부터 칩을 쓸어 담기 시작하기까지.
  *
- * 액션이 튀어나오는 동작이 420ms다. 그보다 짧게 잡으면 읽기도 전에 화면이
- * 바뀐다.
+ * 액션이 튀어나오는 동작이 420ms라, 680ms로 잡았을 때는 다 뜬 "CALL"이
+ * 260ms만 머물고 사라져 취소된 것처럼 보였다. 다 뜬 뒤로 500ms는 남긴다.
  */
-const PREFLOP_SETTLE_MS = 680;
+const PREFLOP_SETTLE_MS = 920;
+
+/**
+ * 프리플랍 칩이 팟으로 날아가는 시간. gw-chip-to-pot과 같아야 한다.
+ *
+ * 포스트플랍으로 넘어가면 프리플랍 칩과 액션 표시가 한꺼번에 지워진다. 그 전에
+ * 칩을 팟으로 보내 두지 않으면 콜한 칩이 날아가지 않고 증발한다.
+ */
+const PREFLOP_SWEEP_MS = 460;
 
 /**
  * 상대 카드가 까이고 결과 창이 올라오기까지.
@@ -211,6 +219,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [recapOpen, setRecapOpen] = useState(false);
   /** 플랍을 깔아도 되는가. 팟이 정리되고 한 박자 쉰 뒤에 참이 된다. */
   const [flopReady, setFlopReady] = useState(false);
+  /** 프리플랍이 닫혀 칩을 팟으로 쓸어 담는 중인가. */
+  const [preflopSweep, setPreflopSweep] = useState(false);
   /** 결과 창을 올려도 되는가. 상대 카드를 보여준 뒤에 참이 된다. */
   const [resultReady, setResultReady] = useState(false);
   const timers = useRef<number[]>([]);
@@ -225,6 +235,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     clearTimers();
     setRecapOpen(false);
     setFlopReady(false);
+    setPreflopSweep(false);
     setResultReady(false);
     setDecisions([]);
     setEnding(null);
@@ -377,9 +388,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     //
     // 파일을 받는 일은 지금 바로 시작하되, 넘어가는 것만 늦춘다. 그래야
     // 받아오는 시간이 길든 짧든 리듬이 같다.
+    //
+    // 읽을 시간 → 칩을 팟으로 → 넘어감. 칩을 먼저 보내야 넘어가며 액션 표시가
+    // 지워질 때 칩까지 같이 사라지지 않는다.
+    const pending: number[] = [];
     const settled = new Promise<void>((resolve) => {
-      const t = window.setTimeout(resolve, PREFLOP_SETTLE_MS);
-      timers.current.push(t);
+      pending.push(
+        window.setTimeout(() => setPreflopSweep(true), PREFLOP_SETTLE_MS),
+        window.setTimeout(resolve, PREFLOP_SETTLE_MS + PREFLOP_SWEEP_MS),
+      );
+      timers.current.push(...pending);
     });
     // 오프너 자리에 맞는 보드가 있으면 그걸 쓴다. 없으면 기본 목록으로 떨어지고,
     // 그건 BTN-BB 조건이라 다른 자리 조합에는 근사다.
@@ -454,6 +472,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       });
     return () => {
       alive = false;
+      // 다시 돌면 박자를 처음부터 센다. 이전 타이머가 남으면 칩이 먼저 날아간다.
+      pending.forEach((t) => window.clearTimeout(t));
     };
   }, [
     round,
@@ -780,7 +800,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             revealedSteps={phase === "postflop" ? undefined : revealed}
             seatActions={view?.actions}
             seatChips={view ? (chipsShown ? view.chips : {}) : undefined}
-            collectingChips={Boolean(view?.closed) && !swept}
+            collectingChips={
+              phase === "postflop" ? Boolean(view?.closed) && !swept : preflopSweep
+            }
           />
         </div>
       </div>
