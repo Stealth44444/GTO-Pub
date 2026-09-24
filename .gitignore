@@ -57,3 +57,5 @@ scripts/data/boards-run.log
 # 새 보드 세트는 저장소가 아니라 Supabase Storage에만 올린다(scripts/upload-boards.ts).
 public/postflop/*-ip/
 public/postflop/*-sb/
+scripts/data/nn/
+scripts/data/nn-run.log
