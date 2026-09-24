@@ -7,6 +7,7 @@ import {
   applyHeroAction,
   evAt,
   labelFor,
+  sampleAction,
   startGame,
   type SeatsData,
 } from "../src/lib/seatGame.ts";
@@ -28,6 +29,15 @@ function expect(actual: unknown, expected: unknown, label: string) {
 const data = JSON.parse(readFileSync("src/data/preflop-seats.json", "utf8")) as SeatsData;
 const SEATS = seatNames(9);
 const always = (v: number) => () => v;
+
+/** 씨앗 고정 난수. 무작위로 돌리면 실패가 재현되지 않는다. */
+function lcg(seed: number): () => number {
+  let x = seed >>> 0;
+  return () => {
+    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+    return x / 4294967296;
+  };
+}
 
 /** 모든 자리에 같은 핸드를 쥐여 준다. 진행 규칙만 보는 테스트다. */
 const allHands = (code: string) =>
@@ -114,5 +124,86 @@ for (const seat of ["UTG", "CO", "BTN"]) {
   expect(Math.max(...e) > e[0], true, `${seat} AA는 폴드가 최선이 아니다`);
 }
 
-console.log(`\n통과 ${passed}, 실패 ${failed}`);
+
+// ── 접는 자리는 하나씩 접힌다 ───────────────────────────────────────────
+//
+// 액션이 닫히면 뒤에 남은 자리를 스텝에 안 적고 끝내던 때가 있었다. 화면에서는
+// 그 자리들이 카드를 든 채 있다가 플랍으로 넘어가는 순간 한꺼번에 접혔다.
+// 다섯 자리가 동시에 접는 장면은 포커에 없다.
+
+{
+  const SEATS9 = seatNames(9);
+  const rnd = lcg(20260925);
+  let handsChecked = 0;
+  let missingSeats = 0;
+  let heroNotInFlop = 0;
+
+  for (let i = 0; i < 600; i++) {
+    const hands: Record<string, string> = {};
+    for (const seat of SEATS9) hands[seat] = data.hands[Math.floor(rnd() * data.hands.length)];
+    const hero = SEATS9[Math.floor(rnd() * SEATS9.length)];
+    let g = startGame(data, SEATS9, hero, hands, rnd);
+    let guard = 0;
+    while (g.turn && guard++ < 10) {
+      g = applyHeroAction(data, g, sampleAction(data, hero, g.turn.stage, hands[hero], rnd), rnd);
+    }
+    handsChecked += 1;
+
+    // 액션한 자리는 전부 스텝에 있어야 한다. BB만 예외다 — 다들 접으면 BB는
+    // 칠 일 없이 그냥 가져간다.
+    const seen = new Set(g.steps.map((s) => s.seat));
+    const gone = SEATS9.filter((s) => !seen.has(s) && s !== "BB");
+    if (gone.length > 0) missingSeats += 1;
+
+    // 앞자리 둘이서 팟을 만들어 내 차례가 오기 전에 플랍이 정해질 수 있다.
+    // 엔진으로서는 맞는 결과다 — 실제 테이블에서도 구경만 하는 판이 있다.
+    // 다만 그런 판은 내가 고른 것이 없으므로 트레이너가 새로 돌려야 한다.
+    if (g.outcome?.kind === "flop") {
+      const mine = g.outcome.opener === hero || g.outcome.caller === hero;
+      if (!mine) {
+        heroNotInFlop += 1;
+        // 내 스텝이 있다면 폴드여야 한다. 액션이 닫힌 뒤 뒷자리를 접는 것은
+        // 엔진의 단순화이고, 내 자리도 거기 포함된다. 트레이너는 이런 판을
+        // 화면에 올리지 않고 다시 돌린다.
+        const mineStep = g.steps.find((s) => s.seat === hero);
+        if (mineStep) expect(mineStep.kind, "fold", "안 낀 판에서 내 스텝은 폴드뿐이다");
+      }
+    }
+  }
+
+  expect(handsChecked, 600, "600판을 돌렸다");
+  expect(missingSeats, 0, "스텝 없이 사라지는 자리가 없다");
+  // 안 낀 판이 있다는 것 자체는 정상이다. 여기서 세어 두는 이유는 그 비율이
+  // 갑자기 커지면 (예: 레인지가 넓어져 앞자리 콜이 흔해지면) 트레이너가
+  // 빈 판을 자주 돌리게 되기 때문이다.
+  expect(heroNotInFlop < 120, true, `안 낀 판이 600판 중 ${heroNotInFlop}판 (20% 미만)`);
+}
+
+{
+  // 히어로가 콜해서 액션이 닫히는 경우. 뒤에 남은 자리가 전부 스텝에 있어야 한다.
+  const SEATS9 = seatNames(9);
+  const rnd = lcg(7);
+  let checked = 0;
+  for (let i = 0; i < 400 && checked < 5; i++) {
+    const hands: Record<string, string> = {};
+    for (const seat of SEATS9) hands[seat] = data.hands[Math.floor(rnd() * data.hands.length)];
+    const hero = "LJ";
+    const g0 = startGame(data, SEATS9, hero, hands, rnd);
+    if (!g0.turn || !g0.turn.actions.includes("call")) continue;
+    const g = applyHeroAction(data, g0, "call", rnd);
+    if (g.outcome?.kind !== "flop") continue;
+    checked += 1;
+    const seen = new Set(g.steps.map((s) => s.seat));
+    const behind = SEATS9.slice(SEATS9.indexOf(hero) + 1);
+    expect(
+      behind.every((s) => seen.has(s)),
+      true,
+      "내 콜 뒤의 자리도 스텝에 적힌다",
+    );
+  }
+  expect(checked > 0, true, "검사할 판을 찾았다");
+}
+
+console.log(`
+통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);

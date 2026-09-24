@@ -136,12 +136,38 @@ function dealHandCode(rnd: () => number): string {
   return ALL_HANDS[0].code;
 }
 
+/**
+ * 내가 낄 자리가 있는 판인가.
+ *
+ * 앞자리 둘이서 팟을 만들면 내 차례가 오기 전에 플랍이 정해진다 — 열한 판에
+ * 한 번쯤이다. 실제 테이블에서는 구경하는 판이지만, 트레이너에서는 고를 것이
+ * 없는 판이라 화면에 올렸다가 곧바로 다시 돌리게 된다. 그 깜빡임을 없앤다.
+ */
+function worthPlaying(game: GameState, heroSeat: string): boolean {
+  if (game.turn) return true;
+  const o = game.outcome;
+  if (!o) return false;
+  if (o.kind === "flop") return o.opener === heroSeat || o.caller === heroSeat;
+  // 다들 접어서 끝난 판은 짧아도 보여줄 만하다 — 내가 BB로 가져가는 판이다.
+  return true;
+}
+
 function freshRound(fixedSeat?: string | null): Round {
   const heroSeat =
     fixedSeat && SEATS.includes(fixedSeat)
       ? fixedSeat
       : SEATS[Math.floor(Math.random() * SEATS.length)];
-  const hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
+
+  // 고를 것이 있는 판이 나올 때까지 다시 돌린다. 열 번이면 사실상 늘 나온다
+  // (한 번에 나올 확률이 약 89%). 그래도 안 나오면 마지막 판을 그냥 쓴다 —
+  // 무한히 돌리느니 한 판 어색한 편이 낫다.
+  let hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
+  let game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
+  for (let tries = 0; tries < 10 && !worthPlaying(game, heroSeat); tries++) {
+    hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
+    game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
+  }
+
   // 히어로가 실제로 쥔 두 장. 이걸 안 정하면 테이블이 더미 핸드를 그린다.
   const heroCombo = dealCombo(hands[heroSeat], new Set(), Math.random) ?? ["Ah", "Ad"];
   return {
@@ -149,7 +175,7 @@ function freshRound(fixedSeat?: string | null): Round {
     heroSeat,
     hands,
     heroCombo,
-    game: startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random),
+    game,
     allinBoard: null,
     allinCards: null,
     entry: null,
@@ -268,6 +294,18 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
   const heroSeat = round?.heroSeat ?? SEATS[0];
 
+  /**
+   * 이 판의 플랍에 내가 들어가는가.
+   *
+   * 앞자리 둘이서 팟을 만들면 내 차례가 오기 전에 플랍이 결정된다 — 아홉 자리
+   * 중 열한 판에 한 번쯤 그렇다. 실제 테이블에서는 그냥 구경하는 판이지만,
+   * 그대로 두면 내가 고른 적 없는 판의 플랍에 나를 앉히게 된다.
+   */
+  const heroInFlop =
+    outcome?.kind === "flop"
+      ? outcome.opener === heroSeat || outcome.caller === heroSeat
+      : false;
+
   // 좌석 액션·칩·팟은 한 곳에서 뽑는다. 따로 계산하면 서로 어긋난다.
   const view =
     phase === "postflop" && round?.post && round.spot && round.deal && villainSeat
@@ -287,7 +325,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   useEffect(() => {
     if (!round || !allRevealed || !outcome || phase !== "preflop") return;
 
-    if (outcome.kind !== "flop") {
+    if (outcome.kind !== "flop" || !heroInFlop) {
       // 히어로가 한 번도 고르지 못한 판은 보여줄 것이 없다. 바로 다시 돌린다.
       if (decisions.length === 0) {
         const t = window.setTimeout(newRound, 700);
@@ -309,9 +347,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       const note =
         outcome.kind === "allin"
           ? "올인 대결로 끝났습니다"
-          : outcome.winner === round.heroSeat
-            ? "다들 접어서 내가 가져갑니다"
-            : `${outcome.winner}가 가져갑니다`;
+          : outcome.kind === "flop"
+            ? // 내가 낀 판이 아니다. 바로 위에서 다시 돌리므로 보일 일은 없다.
+              `${outcome.opener}와 ${outcome.caller}의 판입니다`
+            : outcome.winner === round.heroSeat
+              ? "다들 접어서 내가 가져갑니다"
+              : `${outcome.winner}가 가져갑니다`;
       const t = window.setTimeout(() => {
         if (board && cards) {
           setShown(true);
@@ -414,7 +455,17 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     return () => {
       alive = false;
     };
-  }, [round, allRevealed, outcome, phase, entries, villainSeat, decisions.length, newRound]);
+  }, [
+    round,
+    allRevealed,
+    outcome,
+    phase,
+    entries,
+    villainSeat,
+    decisions.length,
+    heroInFlop,
+    newRound,
+  ]);
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;

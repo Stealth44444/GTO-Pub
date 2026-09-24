@@ -219,6 +219,24 @@ function stepFor(
   return { seat, kind: "call", committedBb: data.openToBb + ante };
 }
 
+/**
+ * 액션이 닫힌 뒤 뒤에 남은 자리들을 접는다.
+ *
+ * 첫 콜러가 나오면 그 뒤는 접는 것으로 본다(멀티웨이 데이터가 없어서다).
+ * 그런데 그걸 스텝으로 남기지 않으면, 화면에서는 그 자리들이 카드를 든 채
+ * 있다가 플랍으로 넘어가는 순간 한꺼번에 접힌다. 다섯 자리가 동시에 접는
+ * 장면은 포커에 없다.
+ *
+ * 모델이 이미 접은 것으로 치고 있으니, 스텝으로도 그렇게 적는다. 그러면
+ * 화면이 다른 폴드와 똑같이 하나씩 보여준다.
+ */
+function foldRest(data: SeatsData, s: GameState) {
+  for (let i = s.cursor; i < s.seats.length; i++) {
+    s.steps.push(stepFor(data, s.seats, s.seats[i], "fold"));
+  }
+  s.cursor = s.seats.length;
+}
+
 function stageFor(state: GameState, seat: string): Stage {
   if (state.jammer) return { kind: "vsJam", jammer: state.jammer, iOpened: state.opener === seat };
   if (state.opener) return { kind: "vsOpen", opener: state.opener };
@@ -265,11 +283,16 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
       if (s.opener) {
         if (s.opener === s.heroSeat) {
           s.jammer = seat;
+          // 올인 뒤의 자리들이 먼저 접고, 그다음에 내가 답한다. 여기서 안
+          // 접으면 내가 답하는 사이 그 자리들이 카드를 든 채로 남는다.
+          foldRest(data, s);
           s.turn = turnFor(data, s, s.opener);
           return s;
         }
         const openerStage: Stage = { kind: "vsJam", jammer: seat, iOpened: true };
         const reply = sampleAction(data, s.opener, openerStage, s.hands[s.opener], rnd);
+        // 올인에 오프너가 답하면 거기서 끝난다. 뒤에 남은 자리도 접는다.
+        foldRest(data, s);
         s.steps.push(stepFor(data, s.seats, s.opener, reply));
         s.turn = null;
         s.outcome =
@@ -288,6 +311,7 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     }
 
     if (action === "call") {
+      foldRest(data, s);
       s.turn = null;
       s.outcome = s.jammer
         ? { kind: "allin", a: s.jammer, b: seat }
@@ -349,9 +373,23 @@ export function applyHeroAction(
 
   if (action === "fold") {
     s.cursor += 1;
-    return advance(data, s, rnd);
+    const after = advance(data, s, rnd);
+    // 내가 접었으면 내 판은 끝이다. 남은 자리들끼리 플랍에 가는 일은 실제로
+    // 일어나지만, 그걸 "flop"으로 돌려주면 내가 접은 판의 플랍에 나를 앉힌다.
+    if (
+      after.outcome?.kind === "flop" &&
+      after.outcome.opener !== s.heroSeat &&
+      after.outcome.caller !== s.heroSeat
+    ) {
+      return { ...after, outcome: { kind: "folded", winner: after.outcome.caller } };
+    }
+    return after;
   }
   if (action === "call") {
+    // 내 콜로 액션이 닫힌다. 뒤에 남은 자리도 접는 것으로 적어야, 화면에서
+    // 하나씩 접히고 플랍 직전에 한꺼번에 사라지지 않는다.
+    s.cursor += 1;
+    foldRest(data, s);
     s.outcome = s.jammer
       ? { kind: "allin", a: s.jammer, b: state.heroSeat }
       : { kind: "flop", opener: s.opener!, caller: state.heroSeat };
