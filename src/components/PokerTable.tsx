@@ -71,6 +71,7 @@ export default function PokerTable({
   awaitingAction,
   hand,
   heroCards,
+  revealedCards,
   board,
   boardDealFrom = 0,
   potBbOverride,
@@ -95,6 +96,13 @@ export default function PokerTable({
   awaitingAction: boolean;
   hand: HandInfo;
   heroCards?: [string, string];
+  /**
+   * 판이 끝나고 까 보이는 상대 카드. 자리 이름으로 찾는다.
+   *
+   * 접고 끝난 판에서도 보여준다 — 상대가 무엇을 들고 접었는지가 배울 거리다.
+   * 누가 이겼는지와는 별개다. 그건 카드를 깐 판에서만 말할 수 있다.
+   */
+  revealedCards?: Record<string, [string, string]>;
   board?: string[];
   /**
    * 보드에서 이번에 새로 놓이는 카드가 몇 번째부터인가.
@@ -376,6 +384,18 @@ export default function PokerTable({
                   <div className="flex gap-1">
                     <Card rank={hand.high} suit={highSuit} />
                     <Card rank={hand.low} suit={lowSuit} />
+                  </div>
+                ) : revealedCards?.[seat] ? (
+                  <div className="flex gap-1">
+                    {revealedCards[seat].map((card, index) => (
+                      <Card
+                        key={`${card}-${index}`}
+                        rank={card[0]}
+                        suit={card[1] as Suit}
+                        className="animate-[gw-card-flip_340ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
+                        style={{ animationDelay: `${index * 90}ms` }}
+                      />
+                    ))}
                   </div>
                 ) : !(resolved && folded) || isShover ? (
                   <div className="flex gap-0.5">

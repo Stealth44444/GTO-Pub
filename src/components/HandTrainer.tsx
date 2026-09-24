@@ -67,6 +67,15 @@ const FLOP_BEAT_MS = 420;
  */
 const PREFLOP_SETTLE_MS = 680;
 
+/**
+ * 상대 카드가 까이고 결과 창이 올라오기까지.
+ *
+ * 결과 창이 화면 아래를 덮어서 자리에 따라 상대 카드가 가려진다. 깐 카드를
+ * 테이블에서 한 번 보고 넘어가야, 결과 창의 "상대 K7o"가 어느 자리의
+ * 무엇이었는지가 연결된다.
+ */
+const REVEAL_MS = 900;
+
 /** 각 스트릿에서 이미 깔려 있던 카드 수. 새 카드는 여기서부터 놓인다. */
 const DEAL_FROM: Record<string, number> = { flop: 0, turn: 3, river: 4 };
 const SEATS = seatNames(TABLE_SIZE);
@@ -155,6 +164,14 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [ending, setEnding] = useState<string | null>(null);
+  /**
+   * 카드를 까고 끝났는가.
+   *
+   * 상대 카드는 접고 끝났어도 늘 보여준다 — 무엇을 들고 접는지가 배울 거리다.
+   * 하지만 승패는 다르다. 접은 사람은 넛츠를 들고 있었어도 진 것이므로,
+   * "누가 더 셌나"는 카드를 깐 판에서만 말한다.
+   */
+  const [shown, setShown] = useState(false);
   const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 이번에 앉아서 친 몫. 몇 판마다 멈춰서 보여준다. */
@@ -165,6 +182,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [recapOpen, setRecapOpen] = useState(false);
   /** 플랍을 깔아도 되는가. 팟이 정리되고 한 박자 쉰 뒤에 참이 된다. */
   const [flopReady, setFlopReady] = useState(false);
+  /** 결과 창을 올려도 되는가. 상대 카드를 보여준 뒤에 참이 된다. */
+  const [resultReady, setResultReady] = useState(false);
   const timers = useRef<number[]>([]);
   const loggedRef = useRef<number | null>(null);
 
@@ -177,8 +196,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     clearTimers();
     setRecapOpen(false);
     setFlopReady(false);
+    setResultReady(false);
     setDecisions([]);
     setEnding(null);
+    setShown(false);
     setPhase("preflop");
     setRevealed(0);
     loggedRef.current = null;
@@ -290,6 +311,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             : `${outcome.winner}가 가져갑니다`;
       const t = window.setTimeout(() => {
         if (board && cards) {
+          setShown(true);
           setRound((cur) => (cur ? { ...cur, allinBoard: board, allinCards: cards } : cur));
         }
         setEnding(note);
@@ -406,7 +428,13 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         const idx = sampleActionIndex(node, cur.deal.handIdx[node.player], Math.random);
         const next = applyAction(cur.spot, cur.post, idx);
         if (next.node === null) {
-          setEnding(`상대가 ${actionLabel(node.actions[idx])}으로 핸드를 끝냈습니다`);
+          const folded = node.actions[idx].kind === "fold";
+          setShown(!folded);
+          setEnding(
+            folded
+              ? `상대가 접었습니다`
+              : `상대가 ${actionLabel(node.actions[idx])}으로 받았습니다 — 카드를 깝니다`,
+          );
         }
         return { ...cur, post: next };
       });
@@ -436,7 +464,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
    * 결과는 참고일 뿐 채점 근거가 아니다 — 좋은 판단이 지는 일은 늘 있다.
    */
   const showdown: Showdown | null = useMemo(() => {
-    if (!ending || !round) return null;
+    if (!ending || !round || !shown) return null;
     if (round.allinBoard && round.allinCards) {
       return judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
     }
@@ -449,7 +477,31 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       [hero.slice(0, 2), hero.slice(2, 4)],
       [villain.slice(0, 2), villain.slice(2, 4)],
     );
-  }, [ending, round]);
+  }, [ending, round, shown]);
+
+  /**
+   * 판이 끝나면 상대가 무엇을 들고 있었는지.
+   *
+   * 접고 끝났어도 보여준다 — 상대가 무엇을 들고 접는지는 승패만큼이나
+   * 배울 거리다. 승패 판정과 달리 이건 언제나 말할 수 있는 사실이다.
+   */
+  const villainReveal: [string, string] | null = useMemo(() => {
+    if (!ending || !round || !villainSeat) return null;
+    if (round.allinCards) return round.allinCards.villain;
+    if (!round.deal) return null;
+    const combo = round.deal.hands[1 - round.deal.heroPlayer];
+    return [combo.slice(0, 2), combo.slice(2, 4)];
+  }, [ending, round, villainSeat]);
+
+  // 상대 카드를 까고 한 박자 뒤에 결과 창을 올린다. 깔 카드가 없으면
+  // (프리플랍에서 다들 접은 판) 기다릴 이유가 없다.
+  useEffect(() => {
+    if ((!ending && phase !== "over") || resultReady) return;
+    const wait = villainReveal ? REVEAL_MS : 0;
+    const t = window.setTimeout(() => setResultReady(true), wait);
+    timers.current.push(t);
+    return () => window.clearTimeout(t);
+  }, [ending, phase, resultReady, villainReveal]);
 
   // 판이 끝나면 그 판의 판단을 한 번에 남긴다.
   useEffect(() => {
@@ -572,7 +624,11 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     setDecisions((prev) => [...prev, mix ? { ...decision, mix } : decision]);
     const next = applyAction(round.spot, round.post, index);
     if (next.node === null) {
-      setEnding(`내가 ${labels[index]}으로 핸드를 끝냈습니다`);
+      const folded = node.actions[index].kind === "fold";
+      setShown(!folded);
+      setEnding(
+        folded ? "내가 접었습니다" : `내가 ${labels[index]}으로 받았습니다 — 카드를 깝니다`,
+      );
     }
     setRound((cur) => (cur ? { ...cur, post: next } : cur));
   };
@@ -660,6 +716,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
                 ? Math.round((round.spot.effectiveStackBb / round.spot.startingPotBb) * 10) / 10
                 : undefined
             }
+            revealedCards={
+              villainReveal && villainSeat ? { [villainSeat]: villainReveal } : undefined
+            }
             dealKey={String(round.id)}
             actionSeat={phase === "postflop" ? postActionSeat : undefined}
             foldedSeats={foldedSeats}
@@ -735,7 +794,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         )}
       </div>
 
-      {(ending || phase === "over") && (
+      {(ending || phase === "over") && resultReady && (
         <HandResult
           decisions={decisions}
           handCode={round.hands[round.heroSeat]}
@@ -748,29 +807,41 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
               : undefined
           }
           showdown={
-            showdown && villainSeat ? (
+            villainSeat && villainReveal ? (
               <div className="mt-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-table-header)] px-3.5 py-3">
                 <div className="flex items-center justify-between">
+                  {/* 카드를 깐 판에서만 승패를 말한다. 접은 사람은 넛츠를
+                      들고 있었어도 진 것이라, 패를 비교하는 건 뜻이 없다. */}
                   <span className="gw-label">
-                    {showdown.winner === "hero" ? "WIN" : showdown.winner === "tie" ? "SPLIT" : "LOSE"}
+                    {showdown
+                      ? showdown.winner === "hero"
+                        ? "WIN"
+                        : showdown.winner === "tie"
+                          ? "SPLIT"
+                          : "LOSE"
+                      : "상대 핸드"}
                   </span>
-                  <span className="gw-label">쇼다운</span>
+                  <span className="gw-label">{showdown ? "쇼다운" : "접고 끝남"}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[13px]">
                   <span className="text-[var(--gw-text-secondary)]">
                     나 · {heroSeat} · {round.hands[heroSeat]}
                   </span>
-                  <span className="font-semibold text-[var(--gw-text-primary)]">
-                    {showdown.heroHandName}
-                  </span>
+                  {showdown && (
+                    <span className="font-semibold text-[var(--gw-text-primary)]">
+                      {showdown.heroHandName}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[13px]">
                   <span className="text-[var(--gw-text-muted)]">
                     상대 · {villainSeat} · {round.hands[villainSeat]}
                   </span>
-                  <span className="font-semibold text-[var(--gw-text-secondary)]">
-                    {showdown.villainHandName}
-                  </span>
+                  {showdown && (
+                    <span className="font-semibold text-[var(--gw-text-secondary)]">
+                      {showdown.villainHandName}
+                    </span>
+                  )}
                 </div>
               </div>
             ) : undefined

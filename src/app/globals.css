@@ -319,6 +319,23 @@ body {
   }
 }
 
+/*
+ * 상대 카드를 까는 동작.
+ *
+ * 뒷면이 있던 자리에서 뒤집힌다. 새로 나타나는 것이 아니라 원래 있던 카드를
+ * 보여주는 것이므로, 딜 동작처럼 옆에서 들어오면 안 된다.
+ */
+@keyframes gw-card-flip {
+  from {
+    transform: rotateY(90deg) scale(0.9);
+    opacity: 0.4;
+  }
+  to {
+    transform: rotateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 /* 생각 중 표시. 확정된 액션과 대비되도록 흐릿하게 오간다. */
 @keyframes gw-thinking {
   0%,
