@@ -156,8 +156,12 @@ function worthPlaying(game: GameState, heroSeat: string): boolean {
   const o = game.outcome;
   if (!o) return false;
   if (o.kind === "flop") return o.opener === heroSeat || o.caller === heroSeat;
-  // 다들 접어서 끝난 판은 짧아도 보여줄 만하다 — 내가 BB로 가져가는 판이다.
-  return true;
+  // 다들 접어서 내가 BB로 가져가는 판은 짧아도 보여줄 만하다.
+  //
+  // 나머지는 앞자리끼리 끝낸 판이다 — 올인에 콜이 나왔거나, 오픈에 3벳 올인이
+  // 나와 오프너가 답했다. 엔진은 그 뒤 자리를 전부 접은 것으로 적는데 거기에
+  // 나도 들어가서, 고른 적 없는 폴드가 화면에 뜬다.
+  return o.kind === "folded" && o.winner === heroSeat;
 }
 
 function freshRound(fixedSeat?: string | null): Round {
