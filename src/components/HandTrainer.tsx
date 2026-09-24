@@ -70,11 +70,14 @@ const PREFLOP_SETTLE_MS = 680;
 /**
  * 상대 카드가 까이고 결과 창이 올라오기까지.
  *
- * 결과 창이 화면 아래를 덮어서 자리에 따라 상대 카드가 가려진다. 깐 카드를
- * 테이블에서 한 번 보고 넘어가야, 결과 창의 "상대 K7o"가 어느 자리의
- * 무엇이었는지가 연결된다.
+ * 결과 창이 화면 아래를 덮어서 상대 카드가 가려진다. 카드는 테이블에만
+ * 그리므로, 여기서 못 보면 그 판은 영영 못 본다.
+ *
+ * 쇼다운은 더 오래 잡는다. 접고 끝난 판은 상대 카드 두 장만 읽으면 되지만,
+ * 쇼다운은 양쪽 패와 보드 다섯 장을 맞춰 봐야 누가 왜 이겼는지가 보인다.
  */
-const REVEAL_MS = 900;
+const REVEAL_FOLD_MS = 1400;
+const REVEAL_SHOWDOWN_MS = 2600;
 
 /** 각 스트릿에서 이미 깔려 있던 카드 수. 새 카드는 여기서부터 놓인다. */
 const DEAL_FROM: Record<string, number> = { flop: 0, turn: 3, river: 4 };
@@ -497,11 +500,11 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   // (프리플랍에서 다들 접은 판) 기다릴 이유가 없다.
   useEffect(() => {
     if ((!ending && phase !== "over") || resultReady) return;
-    const wait = villainReveal ? REVEAL_MS : 0;
+    const wait = !villainReveal ? 0 : shown ? REVEAL_SHOWDOWN_MS : REVEAL_FOLD_MS;
     const t = window.setTimeout(() => setResultReady(true), wait);
     timers.current.push(t);
     return () => window.clearTimeout(t);
-  }, [ending, phase, resultReady, villainReveal]);
+  }, [ending, phase, resultReady, villainReveal, shown]);
 
   // 판이 끝나면 그 판의 판단을 한 번에 남긴다.
   useEffect(() => {
@@ -737,6 +740,25 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         있게 된다. 고르는 순간 화면이 움직이면 고른 것이 맞는지도 헷갈린다.
       */}
       <div className="px-4 pb-4" style={{ minHeight: ACTION_BAR_MIN_H }}>
+        {/*
+          카드를 까고 결과 창이 올라오기까지 몇 초가 빈다. 아무것도 없으면
+          멈춘 것처럼 보이므로, 무슨 일이 있었는지 여기 적는다. 다 본 사람은
+          눌러서 바로 넘어간다 — 기다리게 하는 것과 붙잡아 두는 것은 다르다.
+        */}
+        {(ending || phase === "over") && !resultReady && (
+          <button
+            type="button"
+            onClick={() => setResultReady(true)}
+            className="flex w-full items-center justify-between gap-3 rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
+          >
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--gw-text-secondary)]">
+              {ending ?? "핸드 종료"}
+            </span>
+            <span className="gw-label-ko shrink-0 text-[10px] text-[var(--gw-text-muted)]">
+              결과 보기
+            </span>
+          </button>
+        )}
         {!ending && round.game.turn && phase === "preflop" && (
           <div
             className="grid gap-2.5"

@@ -19,10 +19,10 @@ export default function RunRecap({
 }) {
   return (
     <section
-      className="absolute inset-x-0 bottom-0 z-40 max-h-full overflow-y-auto rounded-t-[var(--gw-radius-sheet)] border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-5 pb-4 pt-5 animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]"
+      className="absolute inset-x-0 bottom-0 z-40 flex max-h-full flex-col rounded-t-[var(--gw-radius-sheet)] border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ boxShadow: "var(--gw-lift-sheet)" }}
     >
-      <div className="mx-auto flex max-w-sm flex-col">
+      <div className="mx-auto flex w-full min-h-0 max-w-sm flex-1 flex-col overflow-y-auto px-5 pt-5">
         <span className="gw-label-ko text-center">{summary.hands}판 쳤습니다</span>
 
         <div className="mt-2.5 flex items-center justify-center gap-2">
@@ -77,11 +77,17 @@ export default function RunRecap({
           </p>
         )}
 
+        <div className="h-4 shrink-0" />
+      </div>
+
+      <div
+        className="shrink-0 border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-5 pt-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
         <button
           type="button"
           onClick={onContinue}
-          className="mt-5 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
-          style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+          className="mx-auto block w-full max-w-sm rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
         >
           계속하기
         </button>

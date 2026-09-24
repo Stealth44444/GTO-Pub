@@ -34,12 +34,16 @@ export default function HandResult({
 }) {
   const score = scoreHand(decisions);
 
+  // 다음 핸드 버튼은 늘 엄지가 닿는 자리에 있어야 한다. 판단이 네 번이고
+  // 격자가 네 개면 내용이 화면을 넘기는데, 버튼이 그 끝에 붙어 있으면 다음
+  // 판으로 가려고 매번 스크롤을 내려야 한다. 내용만 스크롤하고 버튼은 아래
+  // 고정한다.
   return (
     <section
-      className="absolute inset-x-0 bottom-0 z-30 max-h-full overflow-y-auto rounded-t-[var(--gw-radius-sheet)] border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-5 pb-4 pt-5 animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]"
+      className="absolute inset-x-0 bottom-0 z-30 flex max-h-full flex-col rounded-t-[var(--gw-radius-sheet)] border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]"
       style={{ boxShadow: "var(--gw-lift-sheet)" }}
     >
-      <div className="mx-auto flex max-w-sm flex-col">
+      <div className="mx-auto flex w-full min-h-0 max-w-sm flex-1 flex-col overflow-y-auto px-5 pt-5">
         <div className="flex items-center justify-center gap-2">
           {score.grade ? (
             <>
@@ -115,11 +119,17 @@ export default function HandResult({
           </div>
         ))}
 
+        <div className="h-4 shrink-0" />
+      </div>
+
+      <div
+        className="shrink-0 border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-5 pt-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
         <button
           type="button"
           onClick={onNext}
-          className="mt-5 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
-          style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+          className="mx-auto block w-full max-w-sm rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
         >
           다음 핸드
         </button>
