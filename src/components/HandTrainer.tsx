@@ -547,6 +547,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
                 ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2))
                 : undefined
             }
+            sprBb={
+              // 플랍이 깔린 뒤에만 뜻이 있다. 솔버가 이 스팟을 푼 조건 그대로다.
+              phase === "postflop" && round.spot
+                ? Math.round((round.spot.effectiveStackBb / round.spot.startingPotBb) * 10) / 10
+                : undefined
+            }
             dealKey={String(round.id)}
             actionSeat={phase === "postflop" ? postActionSeat : undefined}
             foldedSeats={foldedSeats}

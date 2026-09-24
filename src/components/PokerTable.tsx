@@ -65,6 +65,7 @@ export default function PokerTable({
   heroCards,
   board,
   potBbOverride,
+  sprBb,
   dealKey,
   actionSeat,
   foldedSeats,
@@ -87,6 +88,11 @@ export default function PokerTable({
   heroCards?: [string, string];
   board?: string[];
   potBbOverride?: number;
+  /**
+   * 플랍 시작 시점의 SPR(남은 유효스택 ÷ 팟). 20bb 게임에서 플랍 이후를
+   * 결정하는 건 사실상 이 숫자 하나다. 프리플랍에는 없다.
+   */
+  sprBb?: number;
   dealKey?: string;
   /** 포스트플랍처럼 외부 핸드 상태가 액션 순서를 제어할 때 현재 액션 자리. */
   actionSeat?: string | null;
@@ -253,9 +259,19 @@ export default function PokerTable({
               ))}
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-            POT {potBb}bb
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+              POT {potBb}bb
+            </span>
+            {sprBb !== undefined && (
+              <span
+                className="text-[var(--gw-accent)]"
+                title="남은 유효스택 ÷ 팟. 작을수록 플랍에서 결정이 빨리 난다."
+              >
+                SPR {sprBb}
+              </span>
+            )}
           </div>
         </div>
 

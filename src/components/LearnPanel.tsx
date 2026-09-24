@@ -4,6 +4,7 @@ import { useState } from "react";
 import seatsRaw from "@/data/preflop-seats.json";
 import { LESSONS, findLesson, type LessonBlock } from "@/lib/lessons";
 import { openWidths } from "@/lib/rangeWidth";
+import { sprCases } from "@/lib/spr";
 import type { SeatsData } from "@/lib/seatGame";
 
 const DATA = seatsRaw as unknown as SeatsData;
@@ -22,6 +23,7 @@ function Block({ block }: { block: LessonBlock }) {
     );
   }
   if (block.kind === "seatOpens") return <SeatOpens caption={block.caption} />;
+  if (block.kind === "sprCases") return <SprCases caption={block.caption} />;
   return (
     <div className="rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)]">
       <div className="gw-label-ko border-b border-[var(--gw-border)] px-3.5 py-2.5">
@@ -167,6 +169,57 @@ function SeatOpens({ caption }: { caption: string }) {
       </div>
       <p className="border-t border-[var(--gw-border)] px-3.5 py-2.5 text-[11px] text-[var(--gw-text-muted)]">
         연한 쪽이 오픈, 진한 쪽이 올인입니다. {DATA.stackBb}bb · BB 앤티 {DATA.anteBb}bb 기준.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 앤티가 있을 때와 없을 때의 SPR.
+ *
+ * 두 줄을 나란히 둔다. 하나만 보여주면 2.5가 원래 그런 값인 줄 알게 되는데,
+ * 실제로는 앤티가 만든 값이다.
+ */
+function SprCases({ caption }: { caption: string }) {
+  const cases = sprCases(DATA);
+  return (
+    <div className="rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)]">
+      <div className="gw-label-ko border-b border-[var(--gw-border)] px-3.5 py-2.5">
+        {caption}
+      </div>
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-[var(--gw-border)]">
+            <th className="gw-label-ko px-3.5 py-2 text-left font-normal">조건</th>
+            <th className="gw-label-ko px-1 py-2 text-right font-normal">팟</th>
+            <th className="gw-label-ko px-1 py-2 text-right font-normal">남은 스택</th>
+            <th className="gw-label-ko px-3.5 py-2 text-right font-normal">SPR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cases.map((c, i) => (
+            <tr key={c.label} className={i > 0 ? "border-t border-[var(--gw-border)]" : undefined}>
+              <td className="px-3.5 py-2.5 text-[13px] text-[var(--gw-text-secondary)]">
+                {c.label}
+              </td>
+              <td className="gw-num px-1 py-2.5 text-right text-[13px] text-[var(--gw-text-secondary)]">
+                {c.potBb}bb
+              </td>
+              <td className="gw-num px-1 py-2.5 text-right text-[13px] text-[var(--gw-text-secondary)]">
+                {c.effectiveStackBb}bb
+              </td>
+              <td
+                className="gw-num px-3.5 py-2.5 text-right text-[14px] font-bold"
+                style={{ color: i === 0 ? "var(--gw-accent)" : "var(--gw-text-muted)" }}
+              >
+                {c.spr}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="border-t border-[var(--gw-border)] px-3.5 py-2.5 text-[11px] text-[var(--gw-text-muted)]">
+        {DATA.stackBb}bb 스택, {DATA.openToBb}bb 오픈 기준. 밝은 쪽이 이 앱이 쓰는 조건입니다.
       </p>
     </div>
   );
