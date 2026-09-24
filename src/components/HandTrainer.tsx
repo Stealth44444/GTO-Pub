@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import preflopData from "@/data/preflop-btn-bb.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
+import { makeDecision, type Decision } from "@/lib/decisions";
+import { buildTableView } from "@/lib/tableView";
+import { judge, type Showdown } from "@/lib/showdown";
+import HandResult from "./HandResult";
 import { applyAction, startHand, type HandState } from "@/lib/hand";
 import { sampleActionIndex, type Deal } from "@/lib/postflopSpot";
 import { ALL_HANDS, seatNames } from "@/lib/poker";
@@ -13,7 +17,7 @@ import {
   type PreflopData,
   type PreflopSeat,
 } from "@/lib/preflopGame";
-import { applyPreflop, evLoss, startPreflop, type PreflopState } from "@/lib/handFlow";
+import { applyPreflop, startPreflop, type PreflopState } from "@/lib/handFlow";
 import {
   loadSpot,
   loadSpotIndex,
@@ -22,8 +26,6 @@ import {
   type SpotEntry,
 } from "@/lib/spotLibrary";
 import { DEFAULT_SCENARIO } from "@/lib/scenarios";
-import { formatEv, formatEvLoss, gradeByEvLoss, type Grade } from "@/lib/grading";
-import GradeIcon from "./GradeIcon";
 import PokerTable from "./PokerTable";
 
 const PREFLOP = preflopData as unknown as PreflopData;
@@ -32,15 +34,6 @@ const tableHand = ALL_HANDS[0];
 /** 한 스텝이 화면에 나타나고 다음으로 넘어가기까지. 폴드는 실제로도 빠르다. */
 const STEP_MS = 620;
 const FOLD_STEP_MS = 320;
-
-type Row = { label: string; evBb: number | null; lossBb: number | null };
-type Feedback = {
-  title: string;
-  grade: Grade | null;
-  chosen: string;
-  lossBb: number | null;
-  rows: Row[];
-};
 
 type Phase = "preflop" | "postflop" | "over";
 
@@ -81,23 +74,18 @@ function freshRound(): Round {
   };
 }
 
-function gradeRows(
-  labels: string[],
-  evBb: (number | null)[],
-): { rows: Row[]; losses: (number | null)[] } {
-  const losses = evLoss(evBb);
-  return {
-    rows: labels.map((label, i) => ({ label, evBb: evBb[i], lossBb: losses[i] })),
-    losses,
-  };
-}
-
 export default function HandTrainer() {
   const [entries, setEntries] = useState<SpotEntry[] | null>(null);
   const [round, setRound] = useState<Round | null>(freshRound);
   const [phase, setPhase] = useState<Phase>("preflop");
   const [revealed, setRevealed] = useState(0);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [ending, setEnding] = useState<string | null>(null);
+  /**
+   * 어느 베팅 라운드를 이미 팟으로 쓸어 담았는지. 불리언으로 두면 라운드가
+   * 바뀔 때 되돌릴 이펙트가 필요하지만, 키로 두면 저절로 초기화된다.
+   */
+  const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
 
@@ -110,7 +98,8 @@ export default function HandTrainer() {
 
   const newRound = useCallback(() => {
     clearTimers();
-    setFeedback(null);
+    setDecisions([]);
+    setEnding(null);
     setPhase("preflop");
     setRevealed(0);
     setRound(freshRound());
@@ -163,6 +152,7 @@ export default function HandTrainer() {
         const blocked = new Set([...board, ...(heroCombo ?? [])]);
         const villainCombo = dealCombo(round.pre.villainHand, blocked, Math.random);
         if (!heroCombo || !villainCombo) {
+          setEnding("이 보드와 카드가 겹쳐 플랍을 깔 수 없었습니다");
           setPhase("over");
           return;
         }
@@ -175,7 +165,13 @@ export default function HandTrainer() {
           spot.handsByPlayer[1].indexOf(hands[1]),
         ];
         if (handIdx[0] < 0 || handIdx[1] < 0) {
-          // 이 보드의 레인지에 없는 조합이다. 판단할 근거가 없으니 여기서 끝낸다.
+          // 솔버가 이 자리에서 이 핸드를 들고 플랍에 오지 않는다. 그래서 플랍
+          // 데이터가 없다. 그냥 끝내면 왜 끝났는지 알 수 없으므로 이유를 남긴다.
+          setEnding(
+            handIdx[0] < 0 && round.heroSeat === "BB"
+              ? "솔버는 이 핸드로 콜하지 않아, 플랍부터는 비교할 정답이 없습니다"
+              : "이 보드에서는 그 핸드의 플랍 데이터가 없습니다",
+          );
           setPhase("over");
           return;
         }
@@ -195,8 +191,28 @@ export default function HandTrainer() {
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;
+
+  const heroSeat: PreflopSeat = round?.heroSeat ?? "BTN";
+  const villainSeat = heroSeat === "BTN" ? "BB" : "BTN";
+
+  // 좌석 액션·칩·팟은 한 곳에서 뽑는다. 따로 계산하면 서로 어긋난다 —
+  // 실제로 팟이 음수로 내려간 적이 있다.
+  const view =
+    phase === "postflop" && round?.post && round.spot && round.deal
+      ? buildTableView(
+          round.post,
+          round.spot.startingPotBb,
+          heroSeat,
+          villainSeat,
+          round.deal.heroPlayer,
+        )
+      : null;
+  // 베팅이 맞으면 칩이 가운데로 날아가고, 460ms 뒤 팟에 합쳐진다.
+  const roundKey = view && round ? `${round.id}-${view.frontBb}-${round.post?.street}` : null;
+  const swept = Boolean(view?.closed) && sweptKey === roundKey;
+  const chipsShown = Boolean(view) && !swept && (view?.frontBb ?? 0) > 0;
   useEffect(() => {
-    if (phase !== "postflop" || !round?.post?.node || !round.spot || postHeroTurn || feedback) return;
+    if (phase !== "postflop" || !round?.post?.node || !round.spot || postHeroTurn || ending) return;
     const t = window.setTimeout(() => {
       setRound((cur) => {
         if (!cur?.post?.node || !cur.spot || !cur.deal) return cur;
@@ -204,54 +220,67 @@ export default function HandTrainer() {
         const idx = sampleActionIndex(node, cur.deal.handIdx[node.player], Math.random);
         const next = applyAction(cur.spot, cur.post, idx);
         if (next.node === null) {
-          setFeedback({
-            title: `상대 ${actionLabel(node.actions[idx])}`,
-            grade: null,
-            chosen: "",
-            lossBb: null,
-            rows: [],
-          });
+          setEnding(`상대가 ${actionLabel(node.actions[idx])}으로 핸드를 끝냈습니다`);
         }
         return { ...cur, post: next };
       });
     }, 700);
     timers.current.push(t);
     return () => window.clearTimeout(t);
-  }, [phase, round, postHeroTurn, feedback]);
+  }, [phase, round, postHeroTurn, ending]);
+
+  // 칩이 팟으로 들어가는 동안만 자리 앞에 남겨 둔다.
+  useEffect(() => {
+    if (!view?.closed || !roundKey || sweptKey === roundKey) return;
+    const t = window.setTimeout(() => setSweptKey(roundKey), 460);
+    timers.current.push(t);
+    return () => window.clearTimeout(t);
+  }, [view?.closed, roundKey, sweptKey]);
+
+  /**
+   * 리버까지 갔으면 누가 이겼는지. 상태가 아니라 파생값이다 — 보드와 두 핸드가
+   * 정해지면 결과도 정해진다.
+   *
+   * 결과는 참고일 뿐 채점 근거가 아니다. 좋은 판단이 지는 일은 늘 있고,
+   * 결과로 판단을 평가하기 시작하면 배우는 게 반대로 뒤집힌다.
+   */
+  const showdown: Showdown | null = useMemo(() => {
+    if (!ending || !round?.post || !round.deal) return null;
+    const { hands, heroPlayer } = round.deal;
+    const hero = hands[heroPlayer];
+    const villain = hands[1 - heroPlayer];
+    return judge(
+      round.post.board,
+      [hero.slice(0, 2), hero.slice(2, 4)],
+      [villain.slice(0, 2), villain.slice(2, 4)],
+    );
+  }, [ending, round]);
 
   const choosePreflop = (action: PreflopAction) => {
-    if (!round?.pre.turn || feedback || !allRevealed) return;
+    if (!round?.pre.turn || ending || !allRevealed) return;
     const turn = round.pre.turn;
     const labels = turn.actions.map((a) => actionLabelAt(PREFLOP, turn.node, a));
-    const { rows, losses } = gradeRows(labels, turn.evBb);
     const i = turn.actions.indexOf(action);
-    const loss = losses[i];
-    setFeedback({
-      title: "프리플랍",
-      grade: loss === null ? null : gradeByEvLoss(loss),
-      chosen: labels[i],
-      lossBb: loss,
-      rows,
-    });
-    setRound((cur) => (cur ? { ...cur, pre: applyPreflop(PREFLOP, cur.pre, action, Math.random) } : cur));
+    // turn.evBb에는 null이 섞일 수 있다(레인지 밖 핸드의 콜). 그대로 넘긴다.
+    setDecisions((prev) => [...prev, makeDecision("PREFLOP", labels, turn.evBb, i)]);
+    setRound((cur) =>
+      cur ? { ...cur, pre: applyPreflop(PREFLOP, cur.pre, action, Math.random) } : cur,
+    );
   };
 
   const choosePostflop = (index: number) => {
-    if (!round?.post?.node || !round.spot || !round.deal || !postHeroTurn || feedback) return;
+    if (!round?.post?.node || !round.spot || !round.deal || !postHeroTurn || ending) return;
     const node = round.post.node;
     const ev = actionEvFor(node, round.deal.handIdx[round.deal.heroPlayer]);
     const labels = node.actions.map(actionLabel);
-    const { rows, losses } = gradeRows(labels, ev);
-    const loss = losses[index];
+    // 핸드를 끝내는 액션이든 아니든 똑같이 채점해서 쌓는다.
+    setDecisions((prev) => [
+      ...prev,
+      makeDecision(round.post!.street.toUpperCase(), labels, ev, index),
+    ]);
     const next = applyAction(round.spot, round.post, index);
     if (next.node === null) {
-      setFeedback({
-        title: round.post.street.toUpperCase(),
-        grade: loss === null ? null : gradeByEvLoss(loss),
-        chosen: labels[index],
-        lossBb: loss,
-        rows,
-      });
+      setEnding(`내가 ${labels[index]}으로 핸드를 끝냈습니다`);
     }
     setRound((cur) => (cur ? { ...cur, post: next } : cur));
   };
@@ -273,10 +302,8 @@ export default function HandTrainer() {
     );
   }
 
-  const heroSeat = round.heroSeat;
-  const villainSeat = heroSeat === "BTN" ? "BB" : "BTN";
-  const foldedSeats = seatNames(tableSize).filter((s) => s !== heroSeat && s !== villainSeat);
-  const preTurnReady = Boolean(round.pre.turn && allRevealed && !feedback);
+  const foldedSeats = seatNames(tableSize).filter((x) => x !== heroSeat && x !== villainSeat);
+  const preTurnReady = Boolean(round.pre.turn && allRevealed && !ending);
   const street =
     phase === "postflop" && round.post ? round.post.street.toUpperCase() : "PREFLOP";
 
@@ -318,22 +345,27 @@ export default function HandTrainer() {
             stackBb={PREFLOP.stackBb}
             anteBb={PREFLOP.anteBb}
             shoverPosition={null}
-            awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !feedback)}
+            awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !ending)}
             hand={tableHand}
             heroCards={heroCards}
             board={phase === "postflop" ? round.post?.board : undefined}
-            potBbOverride={phase === "postflop" ? round.post?.potBb : undefined}
+            potBbOverride={
+              view ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2)) : undefined
+            }
             dealKey={String(round.id)}
             actionSeat={phase === "postflop" ? postActionSeat : undefined}
             foldedSeats={foldedSeats}
             preflopScript={round.pre.steps}
             revealedSteps={phase === "postflop" ? undefined : revealed}
+            seatActions={view?.actions}
+            seatChips={view ? (chipsShown ? view.chips : {}) : undefined}
+            collectingChips={Boolean(view?.closed) && !swept}
           />
         </div>
       </div>
 
       {/* 프리플랍 선택지 */}
-      {!feedback && round.pre.turn && phase === "preflop" && (
+      {!ending && round.pre.turn && phase === "preflop" && (
         <div
           className="grid gap-3 px-4 pb-4"
           style={{ gridTemplateColumns: `repeat(${round.pre.turn.actions.length}, minmax(0, 1fr))` }}
@@ -359,7 +391,7 @@ export default function HandTrainer() {
       )}
 
       {/* 포스트플랍 선택지 */}
-      {!feedback && phase === "postflop" && round.post?.node && (
+      {!ending && phase === "postflop" && round.post?.node && (
         <div
           className="grid gap-3 px-4 pb-4"
           style={{ gridTemplateColumns: `repeat(${round.post.node.actions.length}, minmax(0, 1fr))` }}
@@ -386,76 +418,49 @@ export default function HandTrainer() {
         </div>
       )}
 
-      {(feedback || phase === "over") && (
-        <section className="absolute inset-x-0 bottom-0 z-30 max-h-full overflow-y-auto border-t border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 pb-3 pt-5 shadow-[0_-18px_40px_rgba(0,0,0,0.42)] animate-[gw-result-enter_220ms_cubic-bezier(0.22,1,0.36,1)]">
-          <div className="mx-auto flex max-w-sm flex-col items-center">
-            {feedback?.grade ? (
-              <div className="flex items-center gap-2">
-                <GradeIcon id={feedback.grade.id} color={feedback.grade.color} className="h-7 w-7" />
-                <span
-                  className="text-2xl font-black leading-none"
-                  style={{ color: feedback.grade.color }}
-                >
-                  {feedback.grade.label}
-                </span>
+      {(ending || phase === "over") && (
+        <HandResult
+          decisions={decisions}
+          note={
+            ending ??
+            (outcome?.kind === "folded"
+              ? `${outcome.by}가 접어 핸드가 끝났습니다`
+              : outcome?.kind === "allin"
+                ? "프리플랍 올인으로 끝났습니다"
+                : "핸드 종료")
+          }
+          showdown={
+            showdown ? (
+              <div className="mt-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-table-header)] px-3.5 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="gw-label">
+                    {showdown.winner === "hero" ? "WIN" : showdown.winner === "tie" ? "SPLIT" : "LOSE"}
+                  </span>
+                  <span className="gw-num text-[11px] text-[var(--gw-text-muted)]">쇼다운</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[13px]">
+                  <span className="text-[var(--gw-text-secondary)]">
+                    나 · {round.pre.heroHand}
+                  </span>
+                  <span className="font-semibold text-[var(--gw-text-primary)]">
+                    {showdown.heroHandName}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[13px]">
+                  <span className="text-[var(--gw-text-muted)]">
+                    상대 · {round.pre.villainHand}
+                  </span>
+                  <span className="font-semibold text-[var(--gw-text-secondary)]">
+                    {showdown.villainHandName}
+                  </span>
+                </div>
               </div>
-            ) : (
-              <p className="text-xs font-bold text-[var(--gw-text-secondary)]">
-                {feedback?.title ?? (outcome?.kind === "folded" ? `${outcome.by} 폴드` : "핸드 종료")}
-              </p>
-            )}
-            {feedback?.grade && feedback.lossBb !== null && feedback.lossBb > 0 && (
-              <div className="mt-1 text-xs font-bold tabular-nums text-[var(--gw-text-muted)]">
-                {formatEvLoss(feedback.lossBb)}
-              </div>
-            )}
-            {feedback?.chosen && (
-              <div className="mt-1 text-xs text-[var(--gw-text-muted)]">
-                선택 {feedback.chosen}
-              </div>
-            )}
-
-            {feedback && feedback.rows.length > 0 && (
-              <div className="mt-4 w-full space-y-1.5">
-                {feedback.rows.map((row) => {
-                  const rowGrade = row.lossBb === null ? null : gradeByEvLoss(row.lossBb);
-                  const chosen = row.label === feedback.chosen;
-                  return (
-                    <div
-                      key={row.label}
-                      className="flex items-center gap-2 rounded-[var(--gw-radius-control)] border-2 bg-[var(--gw-table-header)] px-2.5 py-2"
-                      style={{ borderColor: chosen && rowGrade ? rowGrade.color : "transparent" }}
-                    >
-                      {rowGrade ? (
-                        <GradeIcon id={rowGrade.id} color={rowGrade.color} />
-                      ) : (
-                        <span className="h-4 w-4 shrink-0" />
-                      )}
-                      <span className="flex-1 text-sm font-bold text-[var(--gw-text-primary)]">
-                        {row.label}
-                      </span>
-                      <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-[var(--gw-text-muted)]">
-                        {row.lossBb === null ? "—" : row.lossBb === 0 ? "BEST" : formatEvLoss(row.lossBb)}
-                      </span>
-                      <span className="w-20 shrink-0 text-right text-sm font-bold tabular-nums text-[var(--gw-text-secondary)]">
-                        {row.evBb === null ? "—" : formatEv(row.evBb)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={newRound}
-              className="mt-4 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3 text-xs font-bold text-[var(--gw-bg)] transition active:scale-[0.98]"
-            >
-              다음 핸드
-            </button>
-          </div>
-        </section>
+            ) : undefined
+          }
+          onNext={newRound}
+        />
       )}
+
     </div>
   );
 }
