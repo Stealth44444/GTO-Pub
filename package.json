@@ -16,7 +16,8 @@
     "spots:build": "node --experimental-strip-types scripts/build-postflop-spots.ts",
     "preflop:values": "node --experimental-strip-types scripts/build-preflop-values.ts",
     "preflop:solve": "node --experimental-strip-types scripts/solve-preflop-btn-bb.ts",
-    "view:test": "node --experimental-strip-types scripts/tableView.test.ts"
+    "view:test": "node --experimental-strip-types scripts/tableView.test.ts",
+    "preflop:seats": "node --experimental-strip-types scripts/solve-preflop-seats.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

@@ -7,6 +7,8 @@ import { makeDecision, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
+import { dealCombo as pickCombo } from "@/lib/preflopGame";
+import { dealRunout } from "@/lib/runout";
 import HandResult from "./HandResult";
 import { applyAction, startHand, type HandState } from "@/lib/hand";
 import { sampleActionIndex, type Deal } from "@/lib/postflopSpot";
@@ -42,6 +44,9 @@ type Phase = "preflop" | "postflop" | "over";
 
 type Round = {
   id: number;
+  /** 프리플랍 올인이 콜됐을 때 깔아 준 보드. 그 외에는 null. */
+  allinBoard: string[] | null;
+  allinCards: { hero: [string, string]; villain: [string, string] } | null;
   heroSeat: PreflopSeat;
   pre: PreflopState;
   entry: SpotEntry | null;
@@ -68,6 +73,8 @@ function freshRound(): Round {
   const villainHand = dealHandCode(Math.random);
   return {
     id: Date.now() + Math.floor(Math.random() * 1000),
+    allinBoard: null,
+    allinCards: null,
     heroSeat,
     pre: startPreflop(PREFLOP, heroSeat, heroHand, villainHand, Math.random),
     entry: null,
@@ -140,7 +147,29 @@ export default function HandTrainer() {
   useEffect(() => {
     if (!round || !allRevealed || !outcome || phase !== "preflop") return;
     if (outcome.kind !== "flop") {
-      // 마지막 액션을 한 박자 보여준 뒤에 결과로 넘긴다.
+      // 히어로가 한 번도 고르지 못한 판은 보여줄 것이 없다. 바로 다시 돌린다.
+      // (BB로 앉았는데 BTN이 접는 경우가 이렇다.)
+      if (decisions.length === 0) {
+        const t = window.setTimeout(newRound, 700);
+        timers.current.push(t);
+        return () => window.clearTimeout(t);
+      }
+
+      // 올인이 콜됐으면 보드를 끝까지 깔아 승패를 보여준다. 판돈을 다 넣고
+      // 결과를 못 보면 게임이 아니다.
+      let board: string[] | null = null;
+      let cards: Round["allinCards"] = null;
+      if (outcome.kind === "allin") {
+        const hero = pickCombo(round.pre.heroHand, new Set(), Math.random);
+        const villain = hero
+          ? pickCombo(round.pre.villainHand, new Set(hero), Math.random)
+          : null;
+        if (hero && villain) {
+          cards = { hero, villain };
+          board = dealRunout([...hero, ...villain], Math.random);
+        }
+      }
+
       const note =
         outcome.kind === "allin"
           ? "프리플랍 올인으로 끝났습니다"
@@ -148,6 +177,9 @@ export default function HandTrainer() {
             ? "내가 접어 핸드가 끝났습니다"
             : "상대가 접어 핸드가 끝났습니다";
       const t = window.setTimeout(() => {
+        if (board && cards) {
+          setRound((cur) => (cur ? { ...cur, allinBoard: board, allinCards: cards } : cur));
+        }
         setEnding(note);
         setPhase("over");
       }, 500);
@@ -203,7 +235,7 @@ export default function HandTrainer() {
     return () => {
       alive = false;
     };
-  }, [round, allRevealed, outcome, phase, entries]);
+  }, [round, allRevealed, outcome, phase, entries, decisions.length, newRound]);
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;
@@ -261,7 +293,12 @@ export default function HandTrainer() {
    * 결과로 판단을 평가하기 시작하면 배우는 게 반대로 뒤집힌다.
    */
   const showdown: Showdown | null = useMemo(() => {
-    if (!ending || !round?.post || !round.deal) return null;
+    if (!ending || !round) return null;
+    // 프리플랍 올인으로 끝난 판은 여기서 깐 보드로 판정한다.
+    if (round.allinBoard && round.allinCards) {
+      return judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
+    }
+    if (!round.post || !round.deal) return null;
     const { hands, heroPlayer } = round.deal;
     const hero = hands[heroPlayer];
     const villain = hands[1 - heroPlayer];
@@ -394,8 +431,9 @@ export default function HandTrainer() {
       : villainSeat
     : null;
 
-  const heroCards: [string, string] | undefined =
-    phase === "postflop" && round.deal
+  const heroCards: [string, string] | undefined = round.allinCards
+    ? round.allinCards.hero
+    : phase === "postflop" && round.deal
       ? [
           round.deal.hands[round.deal.heroPlayer].slice(0, 2),
           round.deal.hands[round.deal.heroPlayer].slice(2, 4),
@@ -427,7 +465,7 @@ export default function HandTrainer() {
             awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !ending)}
             hand={tableHand}
             heroCards={heroCards}
-            board={phase === "postflop" ? round.post?.board : undefined}
+            board={round.allinBoard ?? (phase === "postflop" ? round.post?.board : undefined)}
             potBbOverride={
               view ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2)) : undefined
             }
