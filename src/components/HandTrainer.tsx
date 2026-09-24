@@ -5,6 +5,7 @@ import seatsRaw from "@/data/preflop-seats.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
 import { makeDecision, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
+import { rangeMix, reachWeights } from "@/lib/rangeMix";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
 import { dealCombo } from "@/lib/preflopGame";
@@ -441,24 +442,24 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     const node = round.post.node;
     const ev = actionEvFor(node, round.deal.handIdx[round.deal.heroPlayer]);
     const labels = node.actions.map(actionLabel);
-    setDecisions((prev) => [
-      ...prev,
-      makeDecision(
-        round.post!.street.toUpperCase(),
+    // 이 라인까지 온 내 레인지가 여기서 무엇을 하는가.
+    const mix = rangeMix(node, reachWeights(round.spot, node.line, node.player), labels);
+    const decision = makeDecision(
+      round.post.street.toUpperCase(),
+      labels,
+      ev,
+      index,
+      node.actions.map((a) => a.kind),
+      round.post.board,
+      fromNode(
+        node,
+        round.spot.handsByPlayer[round.deal.heroPlayer],
         labels,
-        ev,
-        index,
-        node.actions.map((a) => a.kind),
-        round.post!.board,
-        fromNode(
-          node,
-          round.spot!.handsByPlayer[round.deal!.heroPlayer],
-          labels,
-          round.deal!.hands[round.deal!.heroPlayer],
-        ),
-        node.line,
+        round.deal.hands[round.deal.heroPlayer],
       ),
-    ]);
+      node.line,
+    );
+    setDecisions((prev) => [...prev, mix ? { ...decision, mix } : decision]);
     const next = applyAction(round.spot, round.post, index);
     if (next.node === null) {
       setEnding(`내가 ${labels[index]}으로 핸드를 끝냈습니다`);

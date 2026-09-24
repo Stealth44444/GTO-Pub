@@ -94,6 +94,7 @@ export default function HandResult({
                 handCode={handCode}
               />
             )}
+            {d.mix && <RangeMixBar rows={d.mix} />}
             {d.range && (
               <div className="mt-3">
                 <RangeGrid view={d.range} />
@@ -112,5 +113,42 @@ export default function HandResult({
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * 이 자리에서 내 레인지 전체가 무엇을 하는가.
+ *
+ * 격자 위에 한 줄로 둔다. 격자는 칸마다 색이 달라 전체 비율이 눈에 안 들어오고,
+ * 정작 기억에 남아야 할 것은 "이 보드는 거의 다 벳한다" 같은 한 문장이다.
+ */
+function RangeMixBar({ rows }: { rows: { label: string; pct: number }[] }) {
+  const shown = rows.filter((r) => r.pct >= 0.1);
+  if (shown.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="flex items-baseline justify-between">
+        <span className="gw-label-ko">내 레인지 전체</span>
+        <span className="gw-num text-[10px] text-[var(--gw-text-muted)]">
+          {shown.map((r) => `${r.label} ${r.pct}%`).join(" · ")}
+        </span>
+      </div>
+      <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-[var(--gw-table-header)]">
+        {shown.map((r, i) => (
+          <span
+            key={r.label}
+            style={{
+              width: `${r.pct}%`,
+              // 첫 칸이 가장 소극적인 액션이다. 뒤로 갈수록 진하게 둬서
+              // 막대만 보고도 이 자리가 공격적인지 알 수 있게 한다.
+              backgroundColor:
+                i === 0 ? "var(--gw-border-strong)" : i === shown.length - 1
+                  ? "var(--gw-accent-strong)"
+                  : "var(--gw-accent)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
