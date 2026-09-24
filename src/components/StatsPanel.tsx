@@ -2,8 +2,16 @@
 
 import { useMemo } from "react";
 import { GRADE_ORDER, gradeByEvLoss, gradeInfo } from "@/lib/grading";
-import { ACTION_KO, leaksByAction, leaksByStreet, summarize, type Leak } from "@/lib/stats";
+import {
+  ACTION_KO,
+  leaksByAction,
+  leaksByStreet,
+  progressByDay,
+  summarize,
+  type Leak,
+} from "@/lib/stats";
 import GradeIcon from "./GradeIcon";
+import ProgressTrend from "./ProgressTrend";
 import { PanelMessage, PanelScroll, spotLabel } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
 
@@ -60,6 +68,10 @@ export default function StatsPanel() {
   const state = useAttempts();
   const summary = useMemo(
     () => (state.status === "ready" ? summarize(state.attempts) : null),
+    [state],
+  );
+  const trend = useMemo(
+    () => (state.status === "ready" ? progressByDay(state.attempts) : null),
     [state],
   );
   const leaks = useMemo(
@@ -146,6 +158,8 @@ export default function StatsPanel() {
           );
         })}
       </section>
+
+      {trend && <ProgressTrend days={trend} />}
 
       {leaks && (leaks.street.length > 0 || leaks.action.length > 0) && (
         <section className="mt-5">

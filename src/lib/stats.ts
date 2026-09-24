@@ -1,5 +1,5 @@
-import { supabase } from "./supabase";
-import { gradeByEvLoss, isCleanChoice, type GradeId } from "./grading";
+import { supabase } from "./supabase.ts";
+import { gradeByEvLoss, isCleanChoice, type GradeId } from "./grading.ts";
 
 // 한 번에 읽어올 최대 행 수. 파일럿 규모에서는 전부 들어오고, 넘어가면
 // 최근 것부터 이만큼만 집계한다 (집계를 서버로 옮기기 전까지의 한계).
@@ -140,6 +140,57 @@ export function summarize(attempts: Attempt[]): Summary {
     byGrade,
     worst: worst.filter((a) => a.evLossBb > 0),
   };
+}
+
+export type DayProgress = {
+  /** "2026-09-25". 로컬 날짜다 — 새벽 두 시에 친 판은 그날 친 것이다. */
+  day: string;
+  decisions: number;
+  /** 판단 한 번당 평균 손실(bb). 낮을수록 좋다. */
+  avgLossBb: number;
+  accuracyPct: number;
+};
+
+/**
+ * 날짜별로 얼마나 늘었는가.
+ *
+ * 누적 정확도는 좋아져도 거의 안 움직인다. 처음에 쌓인 실수가 분모에 계속
+ * 남기 때문이다. 그래서 그날그날을 따로 센다 — 어제보다 나은지는 그렇게만
+ * 보인다.
+ *
+ * 판단 수가 적은 날은 평균이 한 판에 휘둘리므로 함께 돌려준다. 화면에서
+ * 그걸 보여주지 않으면 세 판 친 날의 100%가 잘한 날로 읽힌다.
+ */
+export function progressByDay(attempts: Attempt[], days = 14): DayProgress[] {
+  const byDay = new Map<string, { n: number; loss: number; clean: number }>();
+
+  for (const a of attempts) {
+    const day = localDay(a.createdAt);
+    if (!day) continue;
+    const acc = byDay.get(day) ?? { n: 0, loss: 0, clean: 0 };
+    acc.n += 1;
+    acc.loss += a.evLossBb;
+    if (isCleanChoice(gradeByEvLoss(a.evLossBb))) acc.clean += 1;
+    byDay.set(day, acc);
+  }
+
+  return [...byDay.entries()]
+    .sort((x, y) => (x[0] < y[0] ? -1 : 1))
+    .slice(-days)
+    .map(([day, v]) => ({
+      day,
+      decisions: v.n,
+      avgLossBb: Math.round((v.loss / v.n) * 1000) / 1000,
+      accuracyPct: Math.round((v.clean / v.n) * 100),
+    }));
+}
+
+/** ISO 시각을 그 기기의 날짜로. 못 읽으면 null — 그런 행은 추이에서 뺀다. */
+function localDay(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (v: number) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** 액션 종류를 사람이 읽는 말로. 기록에는 종류만 남는다. */
