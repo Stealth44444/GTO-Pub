@@ -130,3 +130,12 @@ alter table training_attempts add column if not exists street text
   check (street is null or street in (''preflop'',''flop'',''turn'',''river''));
 alter table training_attempts add column if not exists board text;
 create index if not exists training_attempts_hand_id_idx on training_attempts (hand_id);
+
+-- 어떤 상황에서 내린 판단인지. 이게 없으면 기록을 보고 그 스팟을 다시 만들 수
+-- 없어서, 틀린 곳을 다시 연습시킬 방법이 없다.
+--   프리플랍: firstIn | vsOpen:UTG | vsJam:BB
+--   포스트플랍: 솔버 트리의 라인 (check/bet3.3)
+alter table training_attempts add column if not exists node_line text;
+create index if not exists training_attempts_review_idx
+  on training_attempts (user_id, ev_loss_bb desc)
+  where ev_loss_bb is not null;

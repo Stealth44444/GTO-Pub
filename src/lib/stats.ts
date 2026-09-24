@@ -18,6 +18,8 @@ export type Attempt = {
   createdAt: string;
   /** preflop / flop / turn / river. 옛 푸시·폴드 기록에는 없다. */
   street: string | null;
+  /** 어떤 상황이었는지. 복습 스팟을 다시 만들 때 쓴다. */
+  nodeLine: string | null;
 };
 
 type Row = {
@@ -30,6 +32,7 @@ type Row = {
   user_action: string;
   correct_action: string;
   street?: string | null;
+  node_line?: string | null;
   ev_loss_bb: number | string;
   created_at: string;
 };
@@ -48,6 +51,7 @@ function toAttempt(r: Row): Attempt {
     userAction: r.user_action,
     correctAction: r.correct_action,
     street: r.street ?? null,
+    nodeLine: r.node_line ?? null,
     evLossBb: num(r.ev_loss_bb) ?? 0,
     createdAt: r.created_at,
   };
@@ -62,7 +66,7 @@ export async function fetchAttempts(userId: string): Promise<Attempt[] | null> {
   const { data, error } = await supabase
     .from("training_attempts")
     .select(
-      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, street, ev_loss_bb, created_at",
+      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, street, node_line, ev_loss_bb, created_at",
     )
     .eq("user_id", userId)
     .not("ev_loss_bb", "is", null)

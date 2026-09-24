@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { gradeByEvLoss } from "@/lib/grading";
 import GradeIcon from "./GradeIcon";
-import { PanelMessage, PanelScroll, spotLabel } from "./PanelShell";
+import { PanelScroll, spotLabel } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
+import ReviewPanel from "./ReviewPanel";
 
 const ACTION_TEXT: Record<string, string> = {
   shove: "올인",
@@ -24,27 +26,69 @@ function timeLabel(iso: string): string {
 
 export default function HistoryPanel() {
   const state = useAttempts();
+  const [tab, setTab] = useState<"review" | "log">("review");
 
-  if (state.status === "loading") {
-    return <PanelMessage title="기록" body="기록을 불러오는 중입니다." />;
-  }
-  if (state.status === "unavailable") {
+  // 복습이 먼저다. 지나간 목록을 훑는 것보다 틀린 곳을 다시 치는 게 낫다.
+  const switcher = (
+    <div className="mt-3 flex gap-1.5">
+      {(
+        [
+          ["review", "복습"],
+          ["log", "지난 판"],
+        ] as const
+      ).map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => setTab(id)}
+          className={`rounded-[var(--gw-radius-control)] border px-3 py-1.5 text-[13px] font-semibold transition active:scale-95 ${
+            tab === id
+              ? "border-[var(--gw-accent)] bg-[var(--gw-accent)]/12 text-[var(--gw-accent)]"
+              : "border-[var(--gw-border)] text-[var(--gw-text-muted)]"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === "review") {
     return (
-      <PanelMessage
-        title="기록"
-        body="기록 서버에 연결하지 못했습니다. 연습은 그대로 할 수 있지만 기록은 남지 않습니다."
-      />
+      <div className="relative h-full">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-5 pt-4">
+          <div className="pointer-events-auto">{switcher}</div>
+        </div>
+        <div className="h-full pt-16">
+          <ReviewPanel />
+        </div>
+      </div>
     );
   }
-  if (state.attempts.length === 0) {
+
+  // 빈 상태에서도 전환 버튼은 남겨야 한다. 아니면 복습으로 되돌아올 방법이 없다.
+  const empty =
+    state.status === "loading"
+      ? "기록을 불러오는 중입니다."
+      : state.status === "unavailable"
+        ? "기록 서버에 연결하지 못했습니다. 연습은 그대로 할 수 있지만 기록은 남지 않습니다."
+        : state.attempts.length === 0
+          ? "아직 기록이 없습니다. 한 판 연습하면 여기에 쌓입니다."
+          : null;
+
+  if (state.status !== "ready" || empty) {
     return (
-      <PanelMessage title="기록" body="아직 기록이 없습니다. 한 판 연습하면 여기에 쌓입니다." />
+      <PanelScroll title="기록">
+        {switcher}
+        <p className="mt-4 text-[13px] leading-relaxed text-[var(--gw-text-muted)]">{empty}</p>
+      </PanelScroll>
     );
   }
 
   return (
     <PanelScroll title="기록">
-      <p className="mt-1 text-[11px] text-[var(--gw-text-muted)]">최근 {state.attempts.length}판</p>
+      {switcher}
+      <p className="mt-3 text-[11px] text-[var(--gw-text-muted)]">최근 {state.attempts.length}판</p>
       <div className="mt-3 flex flex-col gap-1.5">
         {state.attempts.map((a, i) => {
           const grade = gradeByEvLoss(a.evLossBb);

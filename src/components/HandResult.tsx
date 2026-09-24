@@ -13,6 +13,7 @@ export default function HandResult({
   decisions,
   note,
   showdown,
+  caveat,
   onNext,
 }: {
   decisions: Decision[];
@@ -20,6 +21,8 @@ export default function HandResult({
   note: string;
   /** 끝까지 갔다면 누가 무엇으로 이겼는지. */
   showdown?: React.ReactNode;
+  /** 채점 근거의 한계를 밝혀야 할 때. */
+  caveat?: string;
   onNext: () => void;
 }) {
   const score = scoreHand(decisions);
@@ -50,6 +53,12 @@ export default function HandResult({
           <p className="mt-2 text-center text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
             앞선 판단으로 이 핸드가 GTO 레인지를 벗어나서, 그 뒤 상황은 비교할 정답이
             없습니다.
+          </p>
+        )}
+
+        {caveat && (
+          <p className="mt-2 rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-3 py-2 text-center text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
+            {caveat}
           </p>
         )}
 

@@ -345,6 +345,7 @@ export default function HandTrainer() {
           correctAction: d.bestKind,
           evLossBb: d.lossBb,
           board: d.board,
+          nodeLine: d.nodeLine,
         })),
       }),
     );
@@ -392,6 +393,11 @@ export default function HandTrainer() {
         turn.actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a)),
         [],
         view,
+        stage.kind === "firstIn"
+          ? "firstIn"
+          : stage.kind === "vsOpen"
+            ? `vsOpen:${stage.opener}`
+            : `vsJam:${stage.jammer}`,
       ),
     ]);
     setRound((cur) =>
@@ -419,6 +425,7 @@ export default function HandTrainer() {
           labels,
           round.deal!.hands[round.deal!.heroPlayer],
         ),
+        node.line,
       ),
     ]);
     const next = applyAction(round.spot, round.post, index);
@@ -567,6 +574,16 @@ export default function HandTrainer() {
         <HandResult
           decisions={decisions}
           note={ending ?? "핸드 종료"}
+          caveat={
+            // 포스트플랍 데이터는 BTN이 열고 BB가 받은 조건 하나뿐이다. 다른
+            // 자리 조합이 플랍에 가면 레인지가 달라 채점이 정확하지 않다.
+            phase === "postflop" &&
+            villainSeat &&
+            !((heroSeat === "BTN" && villainSeat === "BB") ||
+              (heroSeat === "BB" && villainSeat === "BTN"))
+              ? `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`
+              : undefined
+          }
           showdown={
             showdown && villainSeat ? (
               <div className="mt-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-table-header)] px-3.5 py-3">

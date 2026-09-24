@@ -32,6 +32,11 @@ export type Decision = {
   board: string[];
   /** 이 자리의 레인지 전체. 없으면 격자를 그리지 않는다. */
   range?: RangeView;
+  /**
+   * 어떤 상황이었는지. 기록에 남겨 나중에 그 스팟을 다시 만들 때 쓴다.
+   * 프리플랍은 "firstIn" / "vsOpen:UTG", 포스트플랍은 솔버 라인.
+   */
+  nodeLine?: string;
 };
 
 /**
@@ -49,6 +54,7 @@ export function makeDecision(
   kinds: string[] = [],
   board: string[] = [],
   range?: RangeView,
+  nodeLine?: string,
 ): Decision {
   // 값이 없는 액션은 비교에서 빼야 한다. 0으로 채우면 안 된다 — BB에게 0 EV는
   // 폴드(-2bb)보다 훨씬 좋은 값이라, 값이 없다는 이유로 최선이 되어버린다.
@@ -71,6 +77,7 @@ export function makeDecision(
     rows: labels.map((label, i) => ({ label, evBb: evBb[i], lossBb: losses[i] })),
     board,
     range,
+    nodeLine,
   };
 }
 

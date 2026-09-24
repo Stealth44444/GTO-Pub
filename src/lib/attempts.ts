@@ -76,6 +76,8 @@ export async function logHand(params: {
     evLossBb: number | null;
     /** 그 시점의 보드. 프리플랍은 비어 있다. */
     board?: string[];
+    /** 어떤 상황이었는지. 복습 스팟을 다시 만들 때 쓴다. */
+    nodeLine?: string;
   }[];
 }) {
   if (!supabase || !params.userId || params.decisions.length === 0) return;
@@ -96,6 +98,7 @@ export async function logHand(params: {
     // 채점하지 못했으면 정오답도 없다.
     is_correct: d.correctAction === null ? null : d.userAction === d.correctAction,
     ev_loss_bb: d.evLossBb,
+    node_line: d.nodeLine ?? null,
   }));
   const { error } = await supabase.from("training_attempts").insert(rows);
   if (error) console.error("Failed to log hand", error.message);
