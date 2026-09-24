@@ -1,7 +1,8 @@
 "use client";
 
-import { formatEv, formatEvLoss, gradeByEvLoss } from "@/lib/grading";
+import { formatEvLoss } from "@/lib/grading";
 import { scoreHand, type Decision } from "@/lib/decisions";
+import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
 
@@ -80,37 +81,7 @@ export default function HandResult({
                 {d.lossBb === null ? "채점 불가" : d.lossBb === 0 ? "BEST" : formatEvLoss(d.lossBb)}
               </span>
             </div>
-            <div className="space-y-1">
-              {d.rows.map((row) => {
-                const rowGrade = row.lossBb === null ? null : gradeByEvLoss(row.lossBb);
-                const chosen = row.label === d.chosen;
-                return (
-                  <div
-                    key={row.label}
-                    className="flex items-center gap-2 rounded-[var(--gw-radius-control)] border bg-[var(--gw-table-header)] px-2.5 py-2"
-                    style={{
-                      borderColor: chosen && rowGrade ? rowGrade.color : "transparent",
-                      opacity: rowGrade ? 1 : 0.5,
-                    }}
-                  >
-                    {rowGrade ? (
-                      <GradeIcon id={rowGrade.id} color={rowGrade.color} />
-                    ) : (
-                      <span className="h-4 w-4 shrink-0 rounded-full border border-[var(--gw-border-strong)]" />
-                    )}
-                    <span className="flex-1 text-[13px] font-semibold text-[var(--gw-text-primary)]">
-                      {row.label}
-                    </span>
-                    <span className="gw-num w-[68px] shrink-0 text-right text-[11px] text-[var(--gw-text-muted)]">
-                      {row.lossBb === null ? "—" : row.lossBb === 0 ? "BEST" : formatEvLoss(row.lossBb)}
-                    </span>
-                    <span className="gw-num w-[68px] shrink-0 text-right text-[13px] font-semibold text-[var(--gw-text-secondary)]">
-                      {row.evBb === null ? "—" : formatEv(row.evBb)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <DecisionRows rows={d.rows} chosen={d.chosen} />
             {d.range && (
               <div className="mt-3">
                 <RangeGrid view={d.range} />

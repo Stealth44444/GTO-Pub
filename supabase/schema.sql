@@ -113,11 +113,11 @@ alter table training_attempts drop constraint if exists training_attempts_user_a
 alter table training_attempts drop constraint if exists training_attempts_correct_action_check;
 alter table training_attempts
   add constraint training_attempts_user_action_check
-  check (user_action in (''shove'',''call'',''open'',''fold'',''check'',''bet'',''raise'',''allin''));
+  check (user_action in ('shove','call','open','fold','check','bet','raise','allin'));
 alter table training_attempts
   add constraint training_attempts_correct_action_check
   check (correct_action is null or
-         correct_action in (''shove'',''call'',''open'',''fold'',''check'',''bet'',''raise'',''allin''));
+         correct_action in ('shove','call','open','fold','check','bet','raise','allin'));
 
 -- 채점할 수 없는 판단이 있다. 앞선 실수로 솔버 레인지를 벗어나면 비교할 정답이
 -- 없으므로, 정답과 정오답을 비워 둘 수 있어야 한다.
@@ -127,7 +127,7 @@ alter table training_attempts alter column is_correct drop not null;
 -- 같은 판에서 나온 판단들을 묶고, 어느 스트릿이었는지와 보드를 남긴다.
 alter table training_attempts add column if not exists hand_id uuid;
 alter table training_attempts add column if not exists street text
-  check (street is null or street in (''preflop'',''flop'',''turn'',''river''));
+  check (street is null or street in ('preflop','flop','turn','river'));
 alter table training_attempts add column if not exists board text;
 create index if not exists training_attempts_hand_id_idx on training_attempts (hand_id);
 
@@ -139,3 +139,11 @@ alter table training_attempts add column if not exists node_line text;
 create index if not exists training_attempts_review_idx
   on training_attempts (user_id, ev_loss_bb desc)
   where ev_loss_bb is not null;
+
+-- 포스트플랍 판단을 다시 만들려면 보드와 라인만으로는 모자라다. 같은 핸드
+-- 코드라도 무늬가 다르면 보드와 맞물리는 방식이 달라 값이 딴판이고, 어느 보드
+-- 파일이었는지와 히어로가 어느 쪽이었는지도 있어야 노드를 찾는다.
+alter table training_attempts add column if not exists hero_cards text;
+alter table training_attempts add column if not exists spot_file text;
+alter table training_attempts add column if not exists hero_player smallint
+  check (hero_player is null or hero_player in (0, 1));

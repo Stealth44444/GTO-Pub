@@ -68,6 +68,11 @@ export async function logHand(params: {
   /** 히어로 자리. 한 판 안에서는 바뀌지 않는다. */
   position: string;
   handCode: string;
+  /** 히어로가 실제로 들고 있던 두 장. "AhAd" */
+  heroCards?: string;
+  /** 플랍 이후를 다시 만들 때 필요한 것들. 프리플랍에서 끝난 판에는 없다. */
+  spotFile?: string;
+  heroPlayer?: 0 | 1;
   decisions: {
     /** PREFLOP / FLOP / TURN / RIVER */
     street: string;
@@ -91,6 +96,10 @@ export async function logHand(params: {
     ante_bb: params.anteBb,
     position: params.position,
     hand_code: params.handCode,
+    hero_cards: params.heroCards ?? null,
+    // 스팟은 플랍부터의 것이다. 프리플랍 행에 붙이면 복습이 엉뚱한 노드를 찾는다.
+    spot_file: d.street === "PREFLOP" ? null : (params.spotFile ?? null),
+    hero_player: d.street === "PREFLOP" ? null : (params.heroPlayer ?? null),
     street: d.street.toLowerCase(),
     board: d.board?.length ? d.board.join(" ") : null,
     user_action: d.userAction,

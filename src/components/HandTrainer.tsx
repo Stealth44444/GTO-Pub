@@ -360,6 +360,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         anteBb: SEATS_DATA.anteBb,
         position: round.heroSeat,
         handCode: round.hands[round.heroSeat],
+        heroCards: round.deal?.hands[round.deal.heroPlayer],
+        spotFile: round.entry?.file,
+        heroPlayer: round.deal?.heroPlayer,
         decisions: decisions.map((d) => ({
           street: d.street,
           userAction: d.chosenKind,

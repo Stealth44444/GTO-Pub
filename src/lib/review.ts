@@ -3,8 +3,9 @@
 // 기록이 쌓여도 다시 만날 방법이 없으면 실력은 안 바뀐다. 손해가 컸던 판단을
 // 모아 같은 상황을 다시 물어본다.
 //
-// 지금은 프리플랍만 다룬다. 포스트플랍은 보드와 라인이 다 기록되지만, 그
-// 스팟 파일을 받아와 트리를 되짚는 일이 필요해서 따로 붙인다.
+// 프리플랍과 포스트플랍을 모두 다룬다. 둘은 스팟을 되살리는 방법이 달라서
+// 따로 고르고 마지막에 합친다 — 프리플랍은 자리와 상황 이름만 있으면 되지만,
+// 포스트플랍은 그 보드 파일을 받아와 라인을 따라 노드까지 걸어가야 한다.
 
 import type { Attempt } from "./stats.ts";
 import { evAt, type SeatsData, type Stage } from "./seatGame.ts";
@@ -12,6 +13,7 @@ import { evAt, type SeatsData, type Stage } from "./seatGame.ts";
 export type ReviewSpot = {
   /** 같은 스팟을 두 번 넣지 않기 위한 열쇠. */
   key: string;
+  kind: "preflop";
   seat: string;
   handCode: string;
   stage: Stage;
@@ -19,6 +21,25 @@ export type ReviewSpot = {
   lastAction: string;
   lastLossBb: number;
   /** 같은 스팟을 몇 번 틀렸나. 반복해서 틀리는 곳이 진짜 누수다. */
+  misses: number;
+};
+
+/** 플랍 이후에 틀린 판단. 그 노드를 그대로 다시 세우는 데 필요한 것만 담는다. */
+export type PostflopReviewSpot = {
+  key: string;
+  kind: "postflop";
+  street: string;
+  seat: string;
+  handCode: string;
+  /** 무늬까지. 보드와 맞물리는 방식이 달라 무늬 없이는 다른 핸드가 된다. */
+  heroCards: string;
+  spotFile: string;
+  heroPlayer: 0 | 1;
+  /** 솔버 트리의 라인. 빈 문자열이면 플랍 첫 노드다. */
+  line: string;
+  board: string[];
+  lastAction: string;
+  lastLossBb: number;
   misses: number;
 };
 
@@ -71,9 +92,62 @@ export function pickReviewSpots(
     }
     byKey.set(key, {
       key,
+      kind: "preflop",
       seat: a.position,
       handCode: a.handCode,
       stage,
+      lastAction: a.userAction,
+      lastLossBb: a.evLossBb,
+      misses: 1,
+    });
+  }
+
+  return [...byKey.values()]
+    .sort((x, y) => y.misses * y.lastLossBb - x.misses * x.lastLossBb)
+    .slice(0, limit);
+}
+
+/**
+ * 플랍 이후에 틀린 판단을 고른다.
+ *
+ * 되살릴 수 없는 기록은 버린다. 보드 파일, 히어로의 두 장, 어느 쪽이었는지 —
+ * 셋 중 하나라도 없으면 그 노드를 다시 세울 수 없고, 못 세우면 채점도 못 한다.
+ * 이 셋을 남기기 전에 쌓인 기록이 그렇다.
+ */
+export function pickPostflopSpots(
+  attempts: Attempt[],
+  limit = 20,
+): PostflopReviewSpot[] {
+  const byKey = new Map<string, PostflopReviewSpot>();
+
+  for (const a of attempts) {
+    if (!a.street || a.street === "preflop") continue;
+    if (a.evLossBb <= 0.05) continue;
+    if (!a.spotFile || !a.heroCards || a.heroPlayer === null) continue;
+    // 라인은 빈 문자열일 수 있다 — 플랍 첫 판단이 그렇다. null만 걸러낸다.
+    if (a.nodeLine === null) continue;
+
+    const key = `${a.spotFile}|${a.heroCards}|${a.nodeLine}`;
+    const found = byKey.get(key);
+    if (found) {
+      found.misses += 1;
+      if (a.evLossBb > found.lastLossBb) {
+        found.lastLossBb = a.evLossBb;
+        found.lastAction = a.userAction;
+      }
+      continue;
+    }
+    byKey.set(key, {
+      key,
+      kind: "postflop",
+      street: a.street,
+      seat: a.position,
+      handCode: a.handCode,
+      heroCards: a.heroCards,
+      spotFile: a.spotFile,
+      heroPlayer: a.heroPlayer,
+      line: a.nodeLine,
+      board: a.board ? a.board.split(" ").filter(Boolean) : [],
       lastAction: a.userAction,
       lastLossBb: a.evLossBb,
       misses: 1,
@@ -91,3 +165,28 @@ export function describeStage(stage: Stage): string {
   if (stage.kind === "vsOpen") return `${stage.opener}가 열었습니다`;
   return `${stage.jammer}가 올인했습니다`;
 }
+
+/** 프리플랍과 포스트플랍을 한 줄에 세운다. 고칠 값이 큰 것부터 만난다. */
+export type AnyReviewSpot = ReviewSpot | PostflopReviewSpot;
+
+export function pickAllReviewSpots(
+  attempts: Attempt[],
+  data: SeatsData,
+  limit = 20,
+): AnyReviewSpot[] {
+  const all: AnyReviewSpot[] = [
+    ...pickReviewSpots(attempts, data, limit),
+    ...pickPostflopSpots(attempts, limit),
+  ];
+  return all
+    .sort((x, y) => y.misses * y.lastLossBb - x.misses * x.lastLossBb)
+    .slice(0, limit);
+}
+
+/** 스트릿 이름을 화면에 쓰는 말로. */
+export const STREET_KO: Record<string, string> = {
+  preflop: "프리플랍",
+  flop: "플랍",
+  turn: "턴",
+  river: "리버",
+};

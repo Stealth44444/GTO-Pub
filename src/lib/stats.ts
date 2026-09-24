@@ -20,6 +20,13 @@ export type Attempt = {
   street: string | null;
   /** 어떤 상황이었는지. 복습 스팟을 다시 만들 때 쓴다. */
   nodeLine: string | null;
+  /** 그 시점의 보드. 공백으로 나눈 문자열. 프리플랍은 비어 있다. */
+  board: string | null;
+  /** 히어로가 들고 있던 두 장. 무늬까지 맞아야 포스트플랍을 다시 만들 수 있다. */
+  heroCards: string | null;
+  /** 어느 보드 파일의, 어느 쪽 자리였는지. */
+  spotFile: string | null;
+  heroPlayer: 0 | 1 | null;
 };
 
 type Row = {
@@ -33,6 +40,10 @@ type Row = {
   correct_action: string;
   street?: string | null;
   node_line?: string | null;
+  board?: string | null;
+  hero_cards?: string | null;
+  spot_file?: string | null;
+  hero_player?: number | null;
   ev_loss_bb: number | string;
   created_at: string;
 };
@@ -52,6 +63,10 @@ function toAttempt(r: Row): Attempt {
     correctAction: r.correct_action,
     street: r.street ?? null,
     nodeLine: r.node_line ?? null,
+    board: r.board ?? null,
+    heroCards: r.hero_cards ?? null,
+    spotFile: r.spot_file ?? null,
+    heroPlayer: r.hero_player === 0 || r.hero_player === 1 ? r.hero_player : null,
     evLossBb: num(r.ev_loss_bb) ?? 0,
     createdAt: r.created_at,
   };
@@ -66,7 +81,7 @@ export async function fetchAttempts(userId: string): Promise<Attempt[] | null> {
   const { data, error } = await supabase
     .from("training_attempts")
     .select(
-      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, street, node_line, ev_loss_bb, created_at",
+      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, street, node_line, board, hero_cards, spot_file, hero_player, ev_loss_bb, created_at",
     )
     .eq("user_id", userId)
     .not("ev_loss_bb", "is", null)

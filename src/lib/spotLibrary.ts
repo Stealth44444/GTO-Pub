@@ -104,25 +104,34 @@ async function fetchSpot(file: string): Promise<SolvedSpot> {
   return JSON.parse(await new Response(stream).text()) as SolvedSpot;
 }
 
-export function loadSpot(entry: SpotEntry): Promise<SolvedSpot> {
-  const cached = cache.get(entry.file);
+/**
+ * 이름만으로 보드를 받아온다. 복습은 목록을 거치지 않고 기록에 남은 파일
+ * 이름으로 바로 찾는다 — 그 판을 칠 때 쓴 목록이 지금 목록과 같다는 보장이
+ * 없기 때문이다.
+ */
+export function loadSpotFile(file: string): Promise<SolvedSpot> {
+  const cached = cache.get(file);
   if (cached) return Promise.resolve(cached);
 
-  let pending = inFlight.get(entry.file);
+  let pending = inFlight.get(file);
   if (!pending) {
-    pending = fetchSpot(entry.file)
+    pending = fetchSpot(file)
       .then((spot) => {
-        cache.set(entry.file, spot);
-        inFlight.delete(entry.file);
+        cache.set(file, spot);
+        inFlight.delete(file);
         return spot;
       })
       .catch((err) => {
-        inFlight.delete(entry.file);
+        inFlight.delete(file);
         throw err;
       });
-    inFlight.set(entry.file, pending);
+    inFlight.set(file, pending);
   }
   return pending;
+}
+
+export function loadSpot(entry: SpotEntry): Promise<SolvedSpot> {
+  return loadSpotFile(entry.file);
 }
 
 /** 다음 판에 쓸 보드를 미리 받아둔다. 실패해도 조용히 넘긴다 — 그때 다시 받으면 된다. */

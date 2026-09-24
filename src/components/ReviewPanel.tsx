@@ -5,10 +5,12 @@ import seatsRaw from "@/data/preflop-seats.json";
 import { actionsAt, evAt, labelFor, type SeatAction, type SeatsData } from "@/lib/seatGame";
 import { fromRanges } from "@/lib/rangeGrid";
 import { makeDecision } from "@/lib/decisions";
-import { formatEv, formatEvLoss, gradeByEvLoss } from "@/lib/grading";
-import { describeStage, pickReviewSpots } from "@/lib/review";
+import { formatEvLoss } from "@/lib/grading";
+import { describeStage, pickAllReviewSpots } from "@/lib/review";
 import { ACTION_KO } from "@/lib/stats";
+import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
+import PostflopReview from "./PostflopReview";
 import RangeGrid from "./RangeGrid";
 import { PanelMessage, PanelScroll } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
@@ -24,7 +26,7 @@ const DATA = seatsRaw as unknown as SeatsData;
 export default function ReviewPanel() {
   const state = useAttempts();
   const spots = useMemo(
-    () => (state.status === "ready" ? pickReviewSpots(state.attempts, DATA) : []),
+    () => (state.status === "ready" ? pickAllReviewSpots(state.attempts, DATA) : []),
     [state],
   );
   const [index, setIndex] = useState(0);
@@ -45,12 +47,31 @@ export default function ReviewPanel() {
     return (
       <PanelMessage
         title="복습"
-        body="다시 볼 스팟이 아직 없습니다. 프리플랍에서 손해가 컸던 판단이 쌓이면 여기 모입니다."
+        body="다시 볼 스팟이 아직 없습니다. 손해가 컸던 판단이 쌓이면 여기 모입니다."
       />
     );
   }
 
   const spot = spots[Math.min(index, spots.length - 1)];
+
+  const next = () => {
+    setPicked(null);
+    setIndex((i) => (i + 1) % spots.length);
+  };
+
+  if (spot.kind === "postflop") {
+    return (
+      <PanelScroll title="복습">
+        <Intro count={spots.length} />
+        <section className="mt-4 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 py-4">
+          <Counter index={index} total={spots.length} misses={spot.misses} />
+          {/* 스팟이 바뀌면 안에 든 상태도 새로 시작해야 한다. */}
+          <PostflopReview key={spot.key} spot={spot} onNext={next} />
+        </section>
+      </PanelScroll>
+    );
+  }
+
   const actions = actionsAt(spot.stage);
   const labels = actions.map((a) => labelFor(DATA, a));
   const ev = evAt(DATA, spot.seat, spot.stage, spot.handCode);
@@ -81,26 +102,12 @@ export default function ReviewPanel() {
     spot.handCode,
   );
 
-  const next = () => {
-    setPicked(null);
-    setIndex((i) => (i + 1) % spots.length);
-  };
-
   return (
     <PanelScroll title="복습">
-      <p className="mt-1 text-[11px] text-[var(--gw-text-muted)]">
-        손해가 컸던 순서로 {spots.length}개. 반복해서 틀린 스팟이 위로 옵니다.
-      </p>
+      <Intro count={spots.length} />
 
       <section className="mt-4 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 py-4">
-        <div className="flex items-center justify-between">
-          <span className="gw-label">
-            {index + 1} / {spots.length}
-          </span>
-          {spot.misses > 1 && (
-            <span className="gw-label text-[var(--gw-danger)]">{spot.misses}번 틀림</span>
-          )}
-        </div>
+        <Counter index={index} total={spots.length} misses={spot.misses} />
 
         <div className="mt-3 flex items-baseline gap-3">
           <span className="gw-num text-[30px] font-bold leading-none text-[var(--gw-text-primary)]">
@@ -164,40 +171,8 @@ export default function ReviewPanel() {
                   </span>
                 </div>
 
-                <div className="mt-3 space-y-1">
-                  {decision.rows.map((row) => {
-                    const g = row.lossBb === null ? null : gradeByEvLoss(row.lossBb);
-                    const chosen = row.label === decision.chosen;
-                    return (
-                      <div
-                        key={row.label}
-                        className="flex items-center gap-2 rounded-[var(--gw-radius-control)] border bg-[var(--gw-table-header)] px-2.5 py-2"
-                        style={{
-                          borderColor: chosen && g ? g.color : "transparent",
-                          opacity: g ? 1 : 0.5,
-                        }}
-                      >
-                        {g ? (
-                          <GradeIcon id={g.id} color={g.color} />
-                        ) : (
-                          <span className="h-4 w-4 shrink-0 rounded-full border border-[var(--gw-border-strong)]" />
-                        )}
-                        <span className="flex-1 text-[13px] font-semibold text-[var(--gw-text-primary)]">
-                          {row.label}
-                        </span>
-                        <span className="gw-num w-[64px] shrink-0 text-right text-[11px] text-[var(--gw-text-muted)]">
-                          {row.lossBb === null
-                            ? "—"
-                            : row.lossBb === 0
-                              ? "BEST"
-                              : formatEvLoss(row.lossBb)}
-                        </span>
-                        <span className="gw-num w-[64px] shrink-0 text-right text-[13px] font-semibold text-[var(--gw-text-secondary)]">
-                          {row.evBb === null ? "—" : formatEv(row.evBb)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                <div className="mt-3">
+                  <DecisionRows rows={decision.rows} chosen={decision.chosen} />
                 </div>
 
                 <div className="mt-4">
@@ -217,5 +192,32 @@ export default function ReviewPanel() {
         )}
       </section>
     </PanelScroll>
+  );
+}
+
+function Intro({ count }: { count: number }) {
+  return (
+    <p className="mt-1 text-[11px] text-[var(--gw-text-muted)]">
+      손해가 컸던 순서로 {count}개. 반복해서 틀린 스팟이 위로 옵니다.
+    </p>
+  );
+}
+
+function Counter({
+  index,
+  total,
+  misses,
+}: {
+  index: number;
+  total: number;
+  misses: number;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="gw-label">
+        {index + 1} / {total}
+      </span>
+      {misses > 1 && <span className="gw-label text-[var(--gw-danger)]">{misses}번 틀림</span>}
+    </div>
   );
 }

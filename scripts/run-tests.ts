@@ -21,13 +21,13 @@ for (const file of files) {
   const ok = res.status === 0;
   if (!ok) failed += 1;
   // 통과한 것은 마지막 줄만 — 대개 "n개 통과"다. 실패한 것은 전부 보여준다.
-  // 타입 스트리핑 경고는 매번 세 줄씩 끼어들어 요약을 가린다. 걷어낸다.
+  // 노드가 타입 스트리핑과 모듈 종류를 두고 파일마다 몇 줄씩 경고하는데,
+  // 그게 마지막 줄을 차지해 요약을 가린다. 걷어낸다.
+  const NOISE =
+    /ExperimentalWarning|trace-warnings|"type": "module"|Reparsing as ES module|MODULE_TYPELESS_PACKAGE_JSON|^\(Use `node/;
   const body = `${res.stdout ?? ""}${res.stderr ?? ""}`
     .split("\n")
-    .filter(
-      (l) =>
-        !/ExperimentalWarning|trace-warnings|"type": "module"|Reparsing as ES module/.test(l),
-    )
+    .filter((l) => !NOISE.test(l))
     .join("\n")
     .trimEnd();
   const tail = ok ? (body.split("\n").at(-1) ?? "") : `\n${body}`;
