@@ -160,8 +160,28 @@ function dealHandCode(rnd: () => number): string {
  * 한 번쯤이다. 실제 테이블에서는 구경하는 판이지만, 트레이너에서는 고를 것이
  * 없는 판이라 화면에 올렸다가 곧바로 다시 돌리게 된다. 그 깜빡임을 없앤다.
  */
+/**
+ * 뻔한 폴드를 몇 판에 한 번만 남기는가.
+ *
+ * 실제 확률대로 딜하면 판의 60%가 "쓰레기 패를 접고 남들 접는 걸 구경하는"
+ * 판이다(2만 판 시뮬레이션). 실제 테이블은 그렇지만 연습에서는 한 판의 시간을
+ * 버리는 것이다. 다 빼지는 않는다 — 접을 패를 접는 것도 실력이고, 전부 빼면
+ * 딜되는 패가 다 좋아 보여 감각이 흐려진다. 15%만 남기면 뻔한 폴드 판이
+ * 21%로, 고민되는 판단(최선과 차선이 0.25bb 안)이 21%에서 43%로 바뀐다.
+ */
+const KEEP_OBVIOUS_FOLD = 0.15;
+
+/** 최선이 폴드이고 차선보다 0.5bb 넘게 낫다. 고민할 거리가 없는 판단이다. */
+function obviousFold(turn: NonNullable<GameState["turn"]>): boolean {
+  const known = turn.evBb.filter((v): v is number => v !== null);
+  if (known.length === 0) return false;
+  const best = Math.max(...known);
+  const second = known.filter((v) => v !== best).sort((x, y) => y - x)[0] ?? best;
+  return turn.actions[turn.evBb.indexOf(best)] === "fold" && best - second > 0.5;
+}
+
 function worthPlaying(game: GameState, heroSeat: string): boolean {
-  if (game.turn) return true;
+  if (game.turn) return !obviousFold(game.turn) || Math.random() < KEEP_OBVIOUS_FOLD;
   const o = game.outcome;
   if (!o) return false;
   if (o.kind === "flop") return o.opener === heroSeat || o.caller === heroSeat;
@@ -178,12 +198,12 @@ function freshRound(fixedSeat?: string | null): Round {
       ? fixedSeat
       : SEATS[Math.floor(Math.random() * SEATS.length)];
 
-  // 고를 것이 있는 판이 나올 때까지 다시 돌린다. 열 번이면 사실상 늘 나온다
-  // (한 번에 나올 확률이 약 89%). 그래도 안 나오면 마지막 판을 그냥 쓴다 —
-  // 무한히 돌리느니 한 판 어색한 편이 낫다.
+  // 고를 것이 있는 판이 나올 때까지 다시 돌린다. 뻔한 폴드를 걸러 한 번에
+  // 나올 확률이 절반쯤이라 마흔 번이면 사실상 늘 나온다. 그래도 안 나오면
+  // 마지막 판을 그냥 쓴다 — 무한히 돌리느니 한 판 어색한 편이 낫다.
   let hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
   let game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
-  for (let tries = 0; tries < 10 && !worthPlaying(game, heroSeat); tries++) {
+  for (let tries = 0; tries < 40 && !worthPlaying(game, heroSeat); tries++) {
     hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
     game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
   }
