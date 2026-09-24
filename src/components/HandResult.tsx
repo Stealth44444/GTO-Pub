@@ -280,6 +280,7 @@ function DecisionDetail({
             heroSeat={d.jam.heroSeat}
             jammer={d.jam.jammer}
             iOpened={d.jam.iOpened}
+            opener={d.jam.opener}
             handCode={handCode}
           />
         )}

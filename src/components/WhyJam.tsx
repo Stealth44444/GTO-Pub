@@ -23,18 +23,22 @@ export default function WhyJam({
   heroSeat,
   jammer,
   iOpened,
+  opener,
   handCode,
 }: {
   heroSeat: string;
   jammer: string;
   iOpened: boolean;
+  /** 3벳 올인 뒤에 앉아 있었다면 그 오픈을 연 자리. */
+  opener?: string;
   handCode: string;
 }) {
+  const stage = { kind: "vsJam" as const, jammer, iOpened, ...(opener ? { opener } : {}) };
   const [equityPct, setEquityPct] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
-    const range = jamRangeOf(DATA, heroSeat, { kind: "vsJam", jammer, iOpened });
+    const range = jamRangeOf(DATA, heroSeat, stage);
     if (!range) return;
     void loadEquity().then((table) => {
       if (!alive || !table) return;
@@ -43,9 +47,11 @@ export default function WhyJam({
     return () => {
       alive = false;
     };
-  }, [heroSeat, jammer, iOpened, handCode]);
+    // stage는 아래 세 값에서만 나온다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroSeat, jammer, iOpened, opener, handCode]);
 
-  const odds = jamPotOdds(DATA, heroSeat, { kind: "vsJam", jammer, iOpened });
+  const odds = jamPotOdds(DATA, heroSeat, stage);
   // 승률이 아직 안 왔으면 팟 오즈만 보여준다. 그것만으로도 반은 설명된다.
   const enough = equityPct === null ? null : equityPct >= odds.needPct;
 

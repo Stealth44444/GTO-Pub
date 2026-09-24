@@ -10,7 +10,12 @@
 //
 // 첫 콜러가 나오면 그 뒤 자리는 접는 것으로 본다. 솔버가 그렇게 풀렸고,
 // 멀티웨이 팟의 포스트플랍 데이터도 없다.
+//
+// 오픈 뒤에 3벳 올인이 나오면 실제 순서대로 올인 뒤의 자리가 먼저 답하고,
+// 다들 접었을 때만 오프너가 답한다. 뒷자리가 콜하면 오프너는 접는다(콜러는
+// 한 명까지).
 
+import { equityVsRange, type EquityTable } from "./equity.ts";
 import type { PreflopStep } from "./preflop";
 
 export type SeatAction = "fold" | "open" | "jam" | "call";
@@ -46,7 +51,54 @@ export type SeatsData = {
 export type Stage =
   | { kind: "firstIn" }
   | { kind: "vsOpen"; opener: string }
-  | { kind: "vsJam"; jammer: string; iOpened: boolean };
+  | {
+      kind: "vsJam";
+      jammer: string;
+      iOpened: boolean;
+      /**
+       * 올인이 누군가의 오픈 위에 나왔고 나는 그 오프너가 아니다(3벳 올인 뒤에
+       * 앉은 자리). 솔버는 이 상황을 풀지 않았으므로 승률표로 EV를 낸다.
+       */
+      opener?: string;
+    };
+
+/**
+ * 3벳 올인 뒤에 앉은 자리의 콜 EV를 낼 승률표. 앱이 받아서 넣어 준다.
+ * 없으면 그 자리는 접는다 — 근거 없는 콜을 시키느니 모델대로 접는 편이 낫다.
+ */
+let equityTable: EquityTable | null = null;
+
+export function setEquityTable(t: EquityTable | null): void {
+  equityTable = t;
+}
+
+/**
+ * 오픈 → 3벳 올인을 맞은 뒷자리가 콜했을 때의 EV(bb). 폴드 EV(-이미 낸 돈)와
+ * 같은 기준이다. 콜하면 오프너는 접으므로 오프너의 오픈액은 죽은 돈이 된다.
+ *
+ *   팟 = 올인 스택 + 내 스택 + 오프너 오픈액 + 관여 안 한 블라인드(BB는 앤티 포함)
+ *   EV = 승률 × 팟 − 내 스택
+ *
+ * 카드 제거는 반영하지 않는다(equityVsRange 참고).
+ */
+export function squeezeCallEv(
+  data: SeatsData,
+  seat: string,
+  opener: string,
+  jammer: string,
+  hand: string,
+): number | null {
+  if (!equityTable) return null;
+  const range = data.seats[opener]?.vsOpenJam?.[jammer];
+  if (!range) return null;
+  const eqPct = equityVsRange(equityTable, hand, range);
+  if (eqPct === null) return null;
+  const involved = new Set([seat, opener, jammer]);
+  const deadBlinds =
+    (involved.has("SB") ? 0 : 0.5) + (involved.has("BB") ? 0 : 1 + data.anteBb);
+  const pot = 2 * data.stackBb + data.openToBb + deadBlinds;
+  return Math.round(((eqPct / 100) * pot - data.stackBb) * 100) / 100;
+}
 
 export const ACTION_LABEL: Record<SeatAction, string> = {
   fold: "폴드",
@@ -116,6 +168,9 @@ export function evAt(
     // 이미 오픈액을 냈다. 접으면 그만큼만 잃는다.
     return [-data.openToBb, me?.ev?.callJam?.[stage.jammer]?.[i] ?? null];
   }
+  if (stage.opener) {
+    return [foldEv, squeezeCallEv(data, seat, stage.opener, stage.jammer, hand)];
+  }
   const jammer = data.seats[stage.jammer];
   return [foldEv, jammer?.ev?.vsJamCall?.[seat]?.[i] ?? null];
 }
@@ -145,6 +200,12 @@ function freqAt(
   if (stage.iOpened) {
     const call = get(me.callJam?.[stage.jammer]);
     return [Math.max(0, 1 - call), call];
+  }
+  if (stage.opener) {
+    // 풀린 빈도가 없으니 EV로 최선 대응한다. 콜이 폴드보다 나으면 콜.
+    const ev = squeezeCallEv(data, seat, stage.opener, stage.jammer, hand);
+    const call = ev !== null && ev > -postedOf(data, seat) ? 1 : 0;
+    return [1 - call, call];
   }
   const jammer = data.seats[stage.jammer];
   const call = get(jammer?.vsJamCall?.[seat]);
@@ -209,10 +270,13 @@ function stepFor(
   seats: string[],
   seat: string,
   action: SeatAction,
+  keptBb?: number,
 ): PreflopStep {
   const ante = seat === seats[seats.length - 1] ? data.anteBb : 0;
   if (action === "fold") {
-    return { seat, kind: "fold", committedBb: posted(data, seats, seat) };
+    // 이미 오픈한 자리가 접으면 오픈액은 팟에 남는다. 블라인드로 되돌리면
+    // 자리 앞의 칩이 줄어든다.
+    return { seat, kind: "fold", committedBb: keptBb ?? posted(data, seats, seat) };
   }
   if (action === "jam") return { seat, kind: "allin", committedBb: data.stackBb };
   if (action === "open") return { seat, kind: "raise", committedBb: data.openToBb + ante };
@@ -237,8 +301,22 @@ function foldRest(data: SeatsData, s: GameState) {
   s.cursor = s.seats.length;
 }
 
+/** 3벳 올인에 뒷자리가 콜했다. 콜러는 한 명까지라 오프너는 접는다. */
+function foldOpenerAfterSqueeze(data: SeatsData, s: GameState) {
+  if (!s.jammer || !s.opener) return;
+  s.steps.push(stepFor(data, s.seats, s.opener, "fold", data.openToBb));
+}
+
 function stageFor(state: GameState, seat: string): Stage {
-  if (state.jammer) return { kind: "vsJam", jammer: state.jammer, iOpened: state.opener === seat };
+  if (state.jammer) {
+    const iOpened = state.opener === seat;
+    return {
+      kind: "vsJam",
+      jammer: state.jammer,
+      iOpened,
+      ...(state.opener && !iOpened ? { opener: state.opener } : {}),
+    };
+  }
   if (state.opener) return { kind: "vsOpen", opener: state.opener };
   return { kind: "firstIn" };
 }
@@ -289,17 +367,8 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
           s.turn = turnFor(data, s, s.opener);
           return s;
         }
-        const openerStage: Stage = { kind: "vsJam", jammer: seat, iOpened: true };
-        const reply = sampleAction(data, s.opener, openerStage, s.hands[s.opener], rnd);
-        // 올인에 오프너가 답하면 거기서 끝난다. 뒤에 남은 자리도 접는다.
-        foldRest(data, s);
-        s.steps.push(stepFor(data, s.seats, s.opener, reply));
-        s.turn = null;
-        s.outcome =
-          reply === "fold"
-            ? { kind: "folded", winner: seat }
-            : { kind: "allin", a: s.opener, b: seat };
-        return s;
+        // 오프너는 아직 답하지 않는다. 실제 순서대로 올인 뒤의 자리가 먼저
+        // 답하고(히어로 포함), 다들 접으면 한 바퀴가 끝난 뒤 오프너가 답한다.
       }
       s.jammer = seat;
       continue;
@@ -312,6 +381,7 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
 
     if (action === "call") {
       foldRest(data, s);
+      foldOpenerAfterSqueeze(data, s);
       s.turn = null;
       s.outcome = s.jammer
         ? { kind: "allin", a: s.jammer, b: seat }
@@ -320,7 +390,19 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     }
   }
 
-  // 한 바퀴가 다 돌았다.
+  // 한 바퀴가 다 돌았다. 오픈 위에 3벳 올인이 나왔고 다들 접었으면 이제 오프너가
+  // 답한다. 오프너가 히어로면 올인이 나온 즉시 물었으므로 여기 오지 않는다.
+  if (s.jammer && s.opener && s.opener !== s.heroSeat) {
+    const openerStage: Stage = { kind: "vsJam", jammer: s.jammer, iOpened: true };
+    const reply = sampleAction(data, s.opener, openerStage, s.hands[s.opener], rnd);
+    s.steps.push(stepFor(data, s.seats, s.opener, reply, data.openToBb));
+    s.turn = null;
+    s.outcome =
+      reply === "fold"
+        ? { kind: "folded", winner: s.jammer }
+        : { kind: "allin", a: s.opener, b: s.jammer };
+    return s;
+  }
   s.turn = null;
   if (s.jammer) s.outcome = { kind: "folded", winner: s.jammer };
   else if (s.opener) s.outcome = { kind: "folded", winner: s.opener };
@@ -390,6 +472,7 @@ export function applyHeroAction(
     // 하나씩 접히고 플랍 직전에 한꺼번에 사라지지 않는다.
     s.cursor += 1;
     foldRest(data, s);
+    foldOpenerAfterSqueeze(data, s);
     s.outcome = s.jammer
       ? { kind: "allin", a: s.jammer, b: state.heroSeat }
       : { kind: "flop", opener: s.opener!, caller: state.heroSeat };

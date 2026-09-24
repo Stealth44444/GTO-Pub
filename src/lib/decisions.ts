@@ -41,7 +41,7 @@ export type Decision = {
    * 올인에 대응한 판단이면 그 상황. 그 자리에서만 팟 오즈와 승률로 근거를
    * 댈 수 있다 — 뒤에 칠 스트릿이 없어 승률이 곧 결론이기 때문이다.
    */
-  jam?: { heroSeat: string; jammer: string; iOpened: boolean };
+  jam?: { heroSeat: string; jammer: string; iOpened: boolean; opener?: string };
   /**
    * 이 자리에서 레인지 전체가 무엇을 하는가. 내 패 하나의 답보다 이쪽이
    * 배울 것이 많다 — 왜 그런 답이 나오는지가 여기 있다.

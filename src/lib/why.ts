@@ -42,8 +42,10 @@ export function jamPotOdds(
   const heroIn = stage.iOpened ? data.openToBb : postedOf(data, heroSeat);
   // 내가 오픈했다면 오픈액에서 블라인드 몫을 뺀 만큼이 추가로 들어가 있다.
   const heroAdds = stage.iOpened ? data.openToBb - postedOf(data, heroSeat) : 0;
+  // 3벳 올인 뒤에 앉았다면 오프너가 낸 오픈액도 팟에 있다.
+  const openerAdds = stage.opener ? data.openToBb - postedOf(data, stage.opener) : 0;
 
-  const potBb = round2(blinds + jammerAdds + heroAdds);
+  const potBb = round2(blinds + jammerAdds + heroAdds + openerAdds);
   const toCallBb = round2(data.stackBb - heroIn);
   return {
     toCallBb,
@@ -60,6 +62,8 @@ export function jamRangeOf(
 ): Record<string, number> | null {
   // 내가 열었다가 3벳 올인을 맞았다면, 그 3벳 레인지는 "내 스팟" 안에 있다.
   if (stage.iOpened) return data.seats[heroSeat]?.vsOpenJam?.[stage.jammer] ?? null;
+  // 남의 오픈 위에 나온 3벳 올인이면 그 레인지는 오프너의 스팟 안에 있다.
+  if (stage.opener) return data.seats[stage.opener]?.vsOpenJam?.[stage.jammer] ?? null;
   return data.seats[stage.jammer]?.openJam ?? null;
 }
 

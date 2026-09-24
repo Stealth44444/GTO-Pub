@@ -57,12 +57,13 @@ export type PostflopReviewSpot = {
 export function parseStage(line: string | null, seat: string): Stage | null {
   if (!line) return null;
   if (line === "firstIn") return { kind: "firstIn" };
-  const [kind, who] = line.split(":");
+  const [kind, who, opener] = line.split(":");
   if (kind === "vsOpen" && who) return { kind: "vsOpen", opener: who };
   if (kind === "vsJam" && who) {
     // 내가 열었다가 3벳을 맞은 경우와 앞의 오픈 올인을 맞은 경우는 다르다.
     // 기록만으로는 갈라지지 않으므로, 3벳자가 내 뒤면 내가 연 것으로 본다.
-    return { kind: "vsJam", jammer: who, iOpened: false };
+    // 세 번째 칸은 3벳 올인 밑에 깔린 오픈. 있으면 뒷자리에서 받은 3벳 올인이다.
+    return { kind: "vsJam", jammer: who, iOpened: false, ...(opener ? { opener } : {}) };
   }
   void seat;
   return null;

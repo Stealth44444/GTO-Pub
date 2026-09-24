@@ -307,7 +307,13 @@ export default function PokerTable({
           const isHero = seat === heroPosition;
           const isShover = seat === shoverPosition;
           // 이 자리가 스크립트에서 몇 번째로 액션하는지, 그리고 지금 어느 단계인지.
-          const stepIdx = script.findIndex((s) => s.seat === seat);
+          // 한 자리가 두 번 칠 수 있다(오픈했다가 3벳 올인을 맞고 접는다). 문구와
+          // 칩은 이미 재생된 것 중 마지막 액션을 따른다.
+          let stepIdx = -1;
+          for (let k = 0; k < Math.min(acted, script.length); k++) {
+            if (script[k].seat === seat) stepIdx = k;
+          }
+          if (stepIdx < 0) stepIdx = script.findIndex((s) => s.seat === seat);
           const step = stepIdx >= 0 ? script[stepIdx] : null;
           const played = stepIdx >= 0 && stepIdx < acted; // 이 자리의 액션이 이미 재생됐다
           const resolved = externallyControlled
@@ -315,7 +321,7 @@ export default function PokerTable({
             : played;
           const acting = externallyControlled
             ? seat === actionSeat
-            : stepIdx === acted && stepIdx >= 0;
+            : script[acted]?.seat === seat;
           // 히어로는 사용자가 고를 때까지, 앞자리는 타이머가 넘어갈 때까지 발광한다.
           // 히어로는 스크립트에 없으므로 스크립트가 끝나면 차례가 온다.
           const heroTurn = isHero && !externallyControlled && acted >= script.length;

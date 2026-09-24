@@ -108,7 +108,7 @@ export default function ReviewPanel() {
           ? "firstIn"
           : spot.stage.kind === "vsOpen"
             ? `vsOpen:${spot.stage.opener}`
-            : `vsJam:${spot.stage.jammer}`,
+            : `vsJam:${spot.stage.jammer}${spot.stage.opener ? `:${spot.stage.opener}` : ""}`,
       }),
     );
   };
@@ -125,6 +125,8 @@ export default function ReviewPanel() {
       return null;
     }
     if (a !== "call") return null;
+    // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.
+    if (spot.stage.opener) return null;
     return DATA.seats[spot.stage.jammer]?.vsJamCall?.[spot.seat] ?? null;
   });
   const gridView = fromRanges(

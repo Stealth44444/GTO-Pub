@@ -8,6 +8,8 @@ import {
   evAt,
   labelFor,
   sampleAction,
+  setEquityTable,
+  squeezeCallEv,
   startGame,
   type SeatsData,
 } from "../src/lib/seatGame.ts";
@@ -202,6 +204,65 @@ for (const seat of ["UTG", "CO", "BTN"]) {
     );
   }
   expect(checked > 0, true, "검사할 판을 찾았다");
+}
+
+{
+  // 오픈 위에 3벳 올인이 나오면 올인 뒤 자리가 먼저 답하고, 오프너는 그 뒤에 답한다.
+  const eq = JSON.parse(readFileSync("scripts/data/equity.json", "utf8")) as {
+    hands: string[];
+    equity: number[];
+  };
+  setEquityTable({ ...eq, index: new Map(eq.hands.map((h, i) => [h, i])) });
+
+  // AA는 3벳 올인에 늘 콜할 만하고, 72o는 늘 접을 만하다.
+  expect((squeezeCallEv(data, "BTN", "UTG", "CO", "AA") ?? -99) > 0, true, "AA는 콜 EV가 양수");
+  expect(
+    (squeezeCallEv(data, "BTN", "UTG", "CO", "72o") ?? 0) < 0,
+    true,
+    "72o는 콜 EV가 폴드(0)보다 낮다",
+  );
+
+  const rnd = lcg(11);
+  let heroAsked = 0;
+  let orderChecked = 0;
+  for (let i = 0; i < 20000; i++) {
+    const hands: Record<string, string> = {};
+    for (const seat of SEATS) hands[seat] = data.hands[Math.floor(rnd() * data.hands.length)];
+    const hero = SEATS[Math.floor(rnd() * SEATS.length)];
+    const g = startGame(data, SEATS, hero, hands, rnd);
+    const at = (seat: string) => SEATS.indexOf(seat);
+    const raise = g.steps.find((s) => s.kind === "raise");
+    const jam = raise && g.steps.find((s) => s.kind === "allin" && at(s.seat) > at(raise.seat));
+    if (!raise || !jam) continue;
+
+    if (g.turn) {
+      // 히어로가 3벳 올인 뒤에 앉았으면 오프너보다 먼저 물어야 한다.
+      if (g.turn.stage.kind === "vsJam" && g.turn.stage.opener) {
+        heroAsked += 1;
+        expect(at(hero) > at(jam.seat), true, "물어보는 자리는 올인 뒤");
+        expect(
+          g.steps.filter((s) => s.seat === raise.seat).length,
+          1,
+          "오프너는 아직 답하지 않았다",
+        );
+      }
+      continue;
+    }
+    // 판이 끝났으면 오프너의 두 번째 액션은 올인 뒤 자리들이 다 친 다음에 나온다.
+    const replyIdx = g.steps.findIndex((s, k) => s.seat === raise.seat && k > g.steps.indexOf(raise));
+    if (replyIdx < 0) continue;
+    orderChecked += 1;
+    const behind = SEATS.slice(at(jam.seat) + 1);
+    const lastBehind = Math.max(...behind.map((b) => g.steps.findIndex((s) => s.seat === b)));
+    expect(replyIdx > lastBehind, true, "오프너 응답은 뒷자리 다음");
+    // 오프너가 접었으면 오픈액은 그대로 팟에 남는다.
+    if (g.steps[replyIdx].kind === "fold") {
+      expect(g.steps[replyIdx].committedBb, data.openToBb, "접은 오프너의 칩은 오픈액");
+    }
+  }
+  expect(heroAsked > 0, true, "3벳 올인 뒤의 히어로에게 차례가 온다");
+  expect(orderChecked > 0, true, "오프너 응답 순서를 검사했다");
+  setEquityTable(null);
 }
 
 console.log(`
