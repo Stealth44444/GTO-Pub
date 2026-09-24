@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import seatsRaw from "@/data/preflop-seats.json";
 import { LESSONS, findLesson, type LessonBlock } from "@/lib/lessons";
+import { openWidths } from "@/lib/rangeWidth";
+import type { SeatsData } from "@/lib/seatGame";
+
+const DATA = seatsRaw as unknown as SeatsData;
 
 function Block({ block }: { block: LessonBlock }) {
   if (block.kind === "text") {
@@ -16,6 +21,7 @@ function Block({ block }: { block: LessonBlock }) {
       </p>
     );
   }
+  if (block.kind === "seatOpens") return <SeatOpens caption={block.caption} />;
   return (
     <div className="rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)]">
       <div className="gw-label-ko border-b border-[var(--gw-border)] px-3.5 py-2.5">
@@ -114,6 +120,54 @@ export default function LearnPanel() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 자리별로 얼마나 여는가. 지금 앱이 쓰는 레인지에서 바로 센다.
+ *
+ * 막대는 오픈과 올인을 이어 붙인다. 둘을 따로 보면 SB가 왜 넓은지가 안 보인다
+ * — SB는 오픈보다 올인으로 들어가는 몫이 다른 자리보다 훨씬 크다.
+ */
+function SeatOpens({ caption }: { caption: string }) {
+  const rows = openWidths(DATA);
+  const max = Math.max(...rows.map((r) => r.openPct + r.jamPct), 1);
+
+  return (
+    <div className="rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)]">
+      <div className="gw-label-ko border-b border-[var(--gw-border)] px-3.5 py-2.5">
+        {caption}
+      </div>
+      <div className="flex flex-col gap-2 px-3.5 py-3">
+        {rows.map((r) => (
+          <div key={r.seat} className="flex items-center gap-2.5">
+            <span className="gw-num w-[34px] shrink-0 text-[11px] font-semibold text-[var(--gw-text-secondary)]">
+              {r.seat}
+            </span>
+            <span className="flex h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--gw-table-header)]">
+              <span
+                style={{
+                  width: `${(r.openPct / max) * 100}%`,
+                  backgroundColor: "var(--gw-accent)",
+                }}
+              />
+              <span
+                style={{
+                  width: `${(r.jamPct / max) * 100}%`,
+                  backgroundColor: "var(--gw-accent-strong)",
+                }}
+              />
+            </span>
+            <span className="gw-num w-[46px] shrink-0 text-right text-[11px] font-semibold text-[var(--gw-text-primary)]">
+              {Math.round((r.openPct + r.jamPct) * 10) / 10}%
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="border-t border-[var(--gw-border)] px-3.5 py-2.5 text-[11px] text-[var(--gw-text-muted)]">
+        연한 쪽이 오픈, 진한 쪽이 올인입니다. {DATA.stackBb}bb · BB 앤티 {DATA.anteBb}bb 기준.
+      </p>
     </div>
   );
 }
