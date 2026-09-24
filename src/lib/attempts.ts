@@ -112,3 +112,50 @@ export async function logHand(params: {
   const { error } = await supabase.from("training_attempts").insert(rows);
   if (error) console.error("Failed to log hand", error.message);
 }
+
+/**
+ * 복습에서 다시 푼 한 문제.
+ *
+ * 모드를 "review"로 남긴다. 통계는 실제로 친 판만 세야 하기 때문이다 —
+ * 복습에서 같은 스팟을 열 번 맞히면 정확도가 올라가지만 실력은 그대로다.
+ * 대신 복습 기록이 있어야 고친 스팟을 목록에서 내릴 수 있다.
+ */
+export async function logReview(params: {
+  userId: string;
+  tableSize: number;
+  stackBb: number;
+  anteBb: number;
+  position: string;
+  handCode: string;
+  street: string;
+  userAction: string;
+  correctAction: string | null;
+  evLossBb: number | null;
+  nodeLine: string | null;
+  board?: string[];
+  heroCards?: string | null;
+  spotFile?: string | null;
+  heroPlayer?: 0 | 1 | null;
+}) {
+  if (!supabase || !params.userId) return;
+  const { error } = await supabase.from("training_attempts").insert({
+    user_id: params.userId,
+    mode: "review",
+    table_size: params.tableSize,
+    stack_bb: params.stackBb,
+    ante_bb: params.anteBb,
+    position: params.position,
+    hand_code: params.handCode,
+    hero_cards: params.heroCards ?? null,
+    spot_file: params.spotFile ?? null,
+    hero_player: params.heroPlayer ?? null,
+    street: params.street.toLowerCase(),
+    board: params.board?.length ? params.board.join(" ") : null,
+    user_action: params.userAction,
+    correct_action: params.correctAction,
+    is_correct: params.correctAction === null ? null : params.userAction === params.correctAction,
+    ev_loss_bb: params.evLossBb,
+    node_line: params.nodeLine,
+  });
+  if (error) console.error("Failed to log review", error.message);
+}

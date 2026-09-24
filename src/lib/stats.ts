@@ -142,6 +142,16 @@ export function summarize(attempts: Attempt[]): Summary {
   };
 }
 
+/**
+ * 실제로 친 판만. 복습에서 다시 푼 문제는 뺀다.
+ *
+ * 복습은 같은 스팟을 반복해서 물어보므로, 통계에 넣으면 열 번 맞힌 한 자리가
+ * 정확도를 끌어올린다. 실력이 는 게 아니라 같은 문제를 외운 것이다.
+ */
+export function playedOnly(attempts: Attempt[]): Attempt[] {
+  return attempts.filter((a) => a.mode !== "review");
+}
+
 export type DayProgress = {
   /** "2026-09-25". 로컬 날짜다 — 새벽 두 시에 친 판은 그날 친 것이다. */
   day: string;

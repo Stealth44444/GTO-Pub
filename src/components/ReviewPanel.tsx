@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import seatsRaw from "@/data/preflop-seats.json";
 import { actionsAt, evAt, labelFor, type SeatAction, type SeatsData } from "@/lib/seatGame";
 import { fromRanges } from "@/lib/rangeGrid";
+import { ensureGuestUser, logReview } from "@/lib/attempts";
 import { makeDecision } from "@/lib/decisions";
+import { currentUserId } from "@/lib/session";
 import { formatEvLoss } from "@/lib/grading";
 import { describeStage, pickAllReviewSpots } from "@/lib/review";
 import { ACTION_KO } from "@/lib/stats";
@@ -75,10 +77,41 @@ export default function ReviewPanel() {
   const actions = actionsAt(spot.stage);
   const labels = actions.map((a) => labelFor(DATA, a));
   const ev = evAt(DATA, spot.seat, spot.stage, spot.handCode);
+  // 기록에는 종류가 들어가야 한다. 라벨("올인 20bb")을 그대로 넣으면 집계도
+  // 안 되고 DB의 액션 제약에도 걸린다.
+  const kinds = actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a));
   const decision =
     picked !== null
-      ? makeDecision("PREFLOP", labels, ev, actions.indexOf(picked))
+      ? makeDecision("PREFLOP", labels, ev, actions.indexOf(picked), kinds)
       : null;
+
+  // 답한 내용을 남겨야 고친 스팟이 목록에서 내려간다. 남기지 않으면 이미
+  // 고친 자리를 영원히 다시 풀게 된다.
+  const answer = (a: SeatAction) => {
+    setPicked(a);
+    const d = makeDecision("PREFLOP", labels, ev, actions.indexOf(a), kinds);
+    const userId = currentUserId();
+    if (!userId) return;
+    void ensureGuestUser(userId).then(() =>
+      logReview({
+        userId,
+        tableSize: DATA.tableSize,
+        stackBb: DATA.stackBb,
+        anteBb: DATA.anteBb,
+        position: spot.seat,
+        handCode: spot.handCode,
+        street: "preflop",
+        userAction: d.chosenKind,
+        correctAction: d.bestKind,
+        evLossBb: d.lossBb,
+        nodeLine: spot.stage.kind === "firstIn"
+          ? "firstIn"
+          : spot.stage.kind === "vsOpen"
+            ? `vsOpen:${spot.stage.opener}`
+            : `vsJam:${spot.stage.jammer}`,
+      }),
+    );
+  };
 
   const me = DATA.seats[spot.seat];
   const ranges = actions.map((a) => {
@@ -130,7 +163,7 @@ export default function ReviewPanel() {
               <button
                 key={a}
                 type="button"
-                onClick={() => setPicked(a)}
+                onClick={() => answer(a)}
                 className={`rounded-[var(--gw-radius-control)] py-3.5 text-[14px] font-bold transition active:scale-95 ${
                   a === "fold"
                     ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"

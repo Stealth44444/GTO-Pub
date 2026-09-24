@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { gradeByEvLoss } from "@/lib/grading";
+import { playedOnly } from "@/lib/stats";
 import GradeIcon from "./GradeIcon";
 import { PanelScroll, spotLabel } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
@@ -26,6 +27,12 @@ function timeLabel(iso: string): string {
 
 export default function HistoryPanel() {
   const state = useAttempts();
+  // 복습에서 다시 푼 문제는 "친 판"이 아니다. 목록에 섞이면 같은 자리가
+  // 여러 번 나와 실제로 몇 판 쳤는지가 안 보인다.
+  const played = useMemo(
+    () => (state.status === "ready" ? playedOnly(state.attempts) : []),
+    [state],
+  );
   const [tab, setTab] = useState<"review" | "log">("review");
 
   // 복습이 먼저다. 지나간 목록을 훑는 것보다 틀린 곳을 다시 치는 게 낫다.
@@ -72,7 +79,7 @@ export default function HistoryPanel() {
       ? "기록을 불러오는 중입니다."
       : state.status === "unavailable"
         ? "기록 서버에 연결하지 못했습니다. 연습은 그대로 할 수 있지만 기록은 남지 않습니다."
-        : state.attempts.length === 0
+        : played.length === 0
           ? "아직 기록이 없습니다. 한 판 연습하면 여기에 쌓입니다."
           : null;
 
@@ -88,9 +95,9 @@ export default function HistoryPanel() {
   return (
     <PanelScroll title="기록">
       {switcher}
-      <p className="mt-3 text-[11px] text-[var(--gw-text-muted)]">최근 {state.attempts.length}판</p>
+      <p className="mt-3 text-[11px] text-[var(--gw-text-muted)]">최근 {played.length}판</p>
       <div className="mt-3 flex flex-col gap-1.5">
-        {state.attempts.map((a, i) => {
+        {played.map((a, i) => {
           const grade = gradeByEvLoss(a.evLossBb);
           return (
             <div

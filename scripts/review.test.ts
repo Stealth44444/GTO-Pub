@@ -92,6 +92,52 @@ function attempt(over: Partial<Attempt>): Attempt {
   check("라인이 다르면 따로 센다", spots.length === 2);
 }
 
+// ── 고친 스팟은 내려간다 ────────────────────────────────────────────────
+
+{
+  // 기록은 최신부터 온다. 맨 앞이 깨끗하면 고친 것이다.
+  const fixed = pickPostflopSpots([
+    attempt({ evLossBb: 0.0, userAction: "check" }),
+    attempt({ evLossBb: 1.2, userAction: "bet" }),
+  ]);
+  check("최근에 맞혔으면 목록에서 내린다", fixed.length === 0);
+
+  // 순서가 반대면 아직 못 고친 것이다.
+  const still = pickPostflopSpots([
+    attempt({ evLossBb: 1.2, userAction: "bet" }),
+    attempt({ evLossBb: 0.0, userAction: "check" }),
+  ]);
+  check("맞힌 뒤에 또 틀렸으면 남는다", still.length === 1);
+  check("고치기 전 실수는 세지 않는다", still[0]?.misses === 1);
+}
+
+{
+  // 다른 스팟까지 덩달아 내려가면 안 된다.
+  const spots = pickPostflopSpots([
+    attempt({ evLossBb: 0.0 }),
+    attempt({ evLossBb: 1.2 }),
+    attempt({ nodeLine: "check/bet3.3", evLossBb: 0.9 }),
+  ]);
+  check("고친 것만 내려간다", spots.length === 1 && spots[0].line === "check/bet3.3");
+}
+
+{
+  const pre = (loss: number, action: string) =>
+    attempt({
+      street: "preflop",
+      position: "CO",
+      handCode: "QJs",
+      nodeLine: "firstIn",
+      userAction: action,
+      evLossBb: loss,
+      board: null,
+      spotFile: null,
+      heroPlayer: null,
+    });
+  check("프리플랍도 고치면 내려간다", pickReviewSpots([pre(0, "open"), pre(2.5, "fold")], DATA).length === 0);
+  check("아직이면 남는다", pickReviewSpots([pre(2.5, "fold"), pre(0, "open")], DATA).length === 1);
+}
+
 // ── 프리플랍과 섞기 ────────────────────────────────────────────────────
 
 {

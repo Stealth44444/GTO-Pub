@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ensureGuestUser, logReview } from "@/lib/attempts";
 import { makeDecision } from "@/lib/decisions";
 import { fromNode } from "@/lib/rangeGrid";
 import type { PostflopReviewSpot } from "@/lib/review";
 import { STREET_KO } from "@/lib/review";
+import seatsRaw from "@/data/preflop-seats.json";
+import type { SeatsData } from "@/lib/seatGame";
+import { currentUserId } from "@/lib/session";
 import { loadSpotFile } from "@/lib/spotLibrary";
 import { ACTION_KO } from "@/lib/stats";
 import { formatEvLoss } from "@/lib/grading";
@@ -14,6 +18,8 @@ import Card from "./Card";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
+
+const DATA = seatsRaw as unknown as SeatsData;
 
 type Loaded =
   | { status: "loading" }
@@ -76,6 +82,33 @@ export default function PostflopReview({
   const labels = node.actions.map(actionLabel);
   const kinds = node.actions.map((a) => a.kind);
   const ev = actionEvFor(node, handIdx);
+
+  // 답한 내용을 남겨야 고친 스팟이 목록에서 내려간다.
+  const answer = (i: number) => {
+    setPicked(i);
+    const d = makeDecision(STREET_KO[spot.street] ?? spot.street, labels, ev, i, kinds, spot.board);
+    const userId = currentUserId();
+    if (!userId) return;
+    void ensureGuestUser(userId).then(() =>
+      logReview({
+        userId,
+        tableSize: DATA.tableSize,
+        stackBb: DATA.stackBb,
+        anteBb: DATA.anteBb,
+        position: spot.seat,
+        handCode: spot.handCode,
+        street: spot.street,
+        userAction: d.chosenKind,
+        correctAction: d.bestKind,
+        evLossBb: d.lossBb,
+        nodeLine: spot.line,
+        board: spot.board,
+        heroCards: spot.heroCards,
+        spotFile: spot.spotFile,
+        heroPlayer: spot.heroPlayer,
+      }),
+    );
+  };
   const decision =
     picked === null
       ? null
@@ -105,7 +138,7 @@ export default function PostflopReview({
               <button
                 key={label}
                 type="button"
-                onClick={() => setPicked(i)}
+                onClick={() => answer(i)}
                 className={`rounded-[var(--gw-radius-control)] py-3.5 text-[13px] font-bold transition active:scale-95 ${buttonClass(kinds[i])}`}
               >
                 {label}

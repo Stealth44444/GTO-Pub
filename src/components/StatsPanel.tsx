@@ -6,6 +6,7 @@ import {
   ACTION_KO,
   leaksByAction,
   leaksByStreet,
+  playedOnly,
   progressByDay,
   summarize,
   type Leak,
@@ -66,20 +67,25 @@ function LeakList({ title, items }: { title: string; items: Leak[] }) {
 
 export default function StatsPanel() {
   const state = useAttempts();
-  const summary = useMemo(
-    () => (state.status === "ready" ? summarize(state.attempts) : null),
+  // 통계는 실제로 친 판만 센다. 복습에서 다시 푼 문제는 빼야 한다.
+  const played = useMemo(
+    () => (state.status === "ready" ? playedOnly(state.attempts) : []),
     [state],
   );
+  const summary = useMemo(
+    () => (state.status === "ready" ? summarize(played) : null),
+    [state, played],
+  );
   const trend = useMemo(
-    () => (state.status === "ready" ? progressByDay(state.attempts) : null),
-    [state],
+    () => (state.status === "ready" ? progressByDay(played) : null),
+    [state, played],
   );
   const leaks = useMemo(
     () =>
       state.status === "ready"
-        ? { street: leaksByStreet(state.attempts), action: leaksByAction(state.attempts) }
+        ? { street: leaksByStreet(played), action: leaksByAction(played) }
         : null,
-    [state],
+    [state, played],
   );
 
   if (state.status === "loading") {

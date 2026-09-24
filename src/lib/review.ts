@@ -3,6 +3,10 @@
 // 기록이 쌓여도 다시 만날 방법이 없으면 실력은 안 바뀐다. 손해가 컸던 판단을
 // 모아 같은 상황을 다시 물어본다.
 //
+// 고친 스팟은 목록에서 내린다. 안 내리면 틀린 적이 있는 모든 자리가 영원히
+// 위에 남아, 이미 고친 것을 계속 다시 풀게 된다. 기준은 "가장 최근 판단이
+// 깨끗했는가" 하나다 — 어제 열 번 틀렸어도 오늘 맞혔으면 고친 것이다.
+//
 // 프리플랍과 포스트플랍을 모두 다룬다. 둘은 스팟을 되살리는 방법이 달라서
 // 따로 고르고 마지막에 합친다 — 프리플랍은 자리와 상황 이름만 있으면 되지만,
 // 포스트플랍은 그 보드 파일을 받아와 라인을 따라 노드까지 걸어가야 한다.
@@ -23,6 +27,12 @@ export type ReviewSpot = {
   /** 같은 스팟을 몇 번 틀렸나. 반복해서 틀리는 곳이 진짜 누수다. */
   misses: number;
 };
+
+/**
+ * 이 아래는 복습거리가 아니다. 무난한 선택까지 다시 풀게 하면 정작 새는 곳에
+ * 쓸 시간이 사라진다. grading.ts의 "무난" 경계와 같은 값이어야 한다.
+ */
+const CLEAN_BB = 0.05;
 
 /** 플랍 이후에 틀린 판단. 그 노드를 그대로 다시 세우는 데 필요한 것만 담는다. */
 export type PostflopReviewSpot = {
@@ -70,17 +80,26 @@ export function pickReviewSpots(
   limit = 20,
 ): ReviewSpot[] {
   const byKey = new Map<string, ReviewSpot>();
+  const fixed = new Set<string>();
 
   for (const a of attempts) {
     if (a.street !== "preflop") continue;
-    if (a.evLossBb <= 0.05) continue; // 무난한 선택은 복습거리가 아니다
     const stage = parseStage(a.nodeLine, a.position);
     if (!stage) continue;
+    const key = `${a.position}|${a.handCode}|${a.nodeLine}`;
+
+    // 기록은 최신부터 온다. 이 스팟에서 마지막으로 한 판단이 깨끗했으면
+    // 고친 것이다 — 그 앞의 실수는 세지 않는다.
+    if (a.evLossBb <= CLEAN_BB) {
+      if (!byKey.has(key)) fixed.add(key);
+      continue;
+    }
+    if (fixed.has(key)) continue;
+
     // 그 상황의 EV가 없으면 다시 물어봐도 채점할 수 없다.
     const ev = evAt(data, a.position, stage, a.handCode);
     if (!ev.some((v) => v !== null)) continue;
 
-    const key = `${a.position}|${a.handCode}|${a.nodeLine}`;
     const found = byKey.get(key);
     if (found) {
       found.misses += 1;
@@ -120,14 +139,21 @@ export function pickPostflopSpots(
 ): PostflopReviewSpot[] {
   const byKey = new Map<string, PostflopReviewSpot>();
 
+  const fixed = new Set<string>();
+
   for (const a of attempts) {
     if (!a.street || a.street === "preflop") continue;
-    if (a.evLossBb <= 0.05) continue;
     if (!a.spotFile || !a.heroCards || a.heroPlayer === null) continue;
     // 라인은 빈 문자열일 수 있다 — 플랍 첫 판단이 그렇다. null만 걸러낸다.
     if (a.nodeLine === null) continue;
 
     const key = `${a.spotFile}|${a.heroCards}|${a.nodeLine}`;
+    if (a.evLossBb <= CLEAN_BB) {
+      if (!byKey.has(key)) fixed.add(key);
+      continue;
+    }
+    if (fixed.has(key)) continue;
+
     const found = byKey.get(key);
     if (found) {
       found.misses += 1;
