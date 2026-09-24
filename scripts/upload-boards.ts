@@ -20,7 +20,9 @@ const ROOT = "public/postflop";
 const BUCKET = "postflop";
 /** 버킷 안의 경로 접두사. 형식이 바뀌면 올려서 옛 앱이 새 파일을 받지 않게 한다. */
 const PREFIX = "v1";
-const PARALLEL = 6;
+const PARALLEL = 3;
+/** 5xx(게이트웨이의 일시 오류)는 몇 번 다시 보낸다. */
+const RETRIES = 4;
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_UPLOAD_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -51,6 +53,19 @@ async function exists(file: string): Promise<boolean> {
 }
 
 async function upload(file: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await uploadOnce(file);
+      return;
+    } catch (err) {
+      const transient = err instanceof Error && /: 5\d\d |fetch failed/.test(err.message);
+      if (!transient || attempt >= RETRIES) throw err;
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+    }
+  }
+}
+
+async function uploadOnce(file: string): Promise<void> {
   const res = await fetch(`${url}/storage/v1/object/${BUCKET}/${PREFIX}/${file}`, {
     method: "POST",
     headers: {
@@ -63,7 +78,7 @@ async function upload(file: string): Promise<void> {
     },
     body: readFileSync(join(ROOT, file)),
   });
-  if (!res.ok) throw new Error(`${file}: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`${file}: ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
 let uploaded = 0;
