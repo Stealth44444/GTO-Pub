@@ -407,22 +407,29 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       round.hands[round.heroSeat],
     );
 
+    const decision = makeDecision(
+      "PREFLOP",
+      labels,
+      turn.evBb,
+      i,
+      turn.actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a)),
+      [],
+      view,
+      stage.kind === "firstIn"
+        ? "firstIn"
+        : stage.kind === "vsOpen"
+          ? `vsOpen:${stage.opener}`
+          : `vsJam:${stage.jammer}`,
+    );
     setDecisions((prev) => [
       ...prev,
-      makeDecision(
-        "PREFLOP",
-        labels,
-        turn.evBb,
-        i,
-        turn.actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a)),
-        [],
-        view,
-        stage.kind === "firstIn"
-          ? "firstIn"
-          : stage.kind === "vsOpen"
-            ? `vsOpen:${stage.opener}`
-            : `vsJam:${stage.jammer}`,
-      ),
+      // 올인을 마주한 자리에서만 팟 오즈와 승률로 근거를 댈 수 있다.
+      stage.kind === "vsJam"
+        ? {
+            ...decision,
+            jam: { heroSeat: round.heroSeat, jammer: stage.jammer, iOpened: stage.iOpened },
+          }
+        : decision,
     ]);
     setRound((cur) =>
       cur ? { ...cur, game: applyHeroAction(SEATS_DATA, cur.game, action, Math.random) } : cur,
@@ -597,6 +604,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       {(ending || phase === "over") && (
         <HandResult
           decisions={decisions}
+          handCode={round.hands[round.heroSeat]}
           note={ending ?? "핸드 종료"}
           caveat={
             // 오프너 자리에 맞는 보드를 못 썼다면 레인지가 달라 채점이 근사다.

@@ -5,6 +5,7 @@ import { scoreHand, type Decision } from "@/lib/decisions";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
+import WhyJam from "./WhyJam";
 
 /**
  * 한 판이 끝난 뒤의 결과. 판단이 한 번이든 네 번이든, 내가 끝냈든 상대가
@@ -12,12 +13,15 @@ import RangeGrid from "./RangeGrid";
  */
 export default function HandResult({
   decisions,
+  handCode,
   note,
   showdown,
   caveat,
   onNext,
 }: {
   decisions: Decision[];
+  /** 히어로가 받은 패. 근거 숫자를 계산할 때 쓴다. */
+  handCode: string;
   /** 핸드가 어떻게 끝났는지 한 줄. */
   note: string;
   /** 끝까지 갔다면 누가 무엇으로 이겼는지. */
@@ -82,6 +86,14 @@ export default function HandResult({
               </span>
             </div>
             <DecisionRows rows={d.rows} chosen={d.chosen} />
+            {d.jam && (
+              <WhyJam
+                heroSeat={d.jam.heroSeat}
+                jammer={d.jam.jammer}
+                iOpened={d.jam.iOpened}
+                handCode={handCode}
+              />
+            )}
             {d.range && (
               <div className="mt-3">
                 <RangeGrid view={d.range} />
