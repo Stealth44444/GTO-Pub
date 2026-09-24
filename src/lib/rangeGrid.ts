@@ -122,17 +122,41 @@ export function fromRanges(
 }
 
 /**
- * 액션별 색. 폴드는 회색, 체크는 어두운 중립, 콜은 밝은 강조, 벳·레이즈·올인은
- * 진한 강조에서 위험색으로 간다. 공격 액션이 여럿이면 뒤로 갈수록(큰 사이즈)
- * 붉어지게 해서 격자만 봐도 공격의 세기가 읽히게 한다.
+ * 액션별 색.
+ *
+ * 브랜드 강조색을 쓰지 않는다. 강조색은 앱 어디서나 "누를 것"을 뜻하는데
+ * 격자에서 콜을 칠하면 같은 색이 두 가지를 뜻하게 되고, 콜과 벳이 같은 민트
+ * 계열이라 칸 안에서 서로 붙으면 경계가 사라진다. 격자를 보는 이유가 그
+ * 경계이므로 이건 그냥 못 쓰는 격자다.
+ *
+ * 회색 → 파랑 → 호박 → 빨강. 색상으로 갈라서 20px 칸에서도 구분되고, 순서
+ * 자체가 소극적에서 공격적으로 읽힌다. 공격 액션이 여럿이면 사이즈가 큰 쪽이
+ * 뒤 색을 받는다.
  */
+const BET_RAMP = [
+  "var(--gw-range-bet-1)",
+  "var(--gw-range-bet-2)",
+  "var(--gw-range-bet-3)",
+];
+
+const isAggressive = (kind: string) =>
+  kind !== "fold" && kind !== "check" && kind !== "call";
+
 export function actionColor(kind: string, index: number, kinds: string[]): string {
-  if (kind === "fold") return "#333a42";
-  if (kind === "check") return "#4a5560";
-  if (kind === "call") return "var(--gw-accent)";
-  const aggressive = kinds.filter((k) => k !== "fold" && k !== "check" && k !== "call");
-  const at = aggressive.indexOf(kind) < 0 ? 0 : aggressive.lastIndexOf(kind);
-  const t = aggressive.length > 1 ? at / (aggressive.length - 1) : 0;
-  void index;
-  return t < 0.5 ? "var(--gw-accent-strong)" : "var(--gw-danger)";
+  if (kind === "fold") return "var(--gw-range-fold)";
+  if (kind === "check") return "var(--gw-range-check)";
+  if (kind === "call") return "var(--gw-range-call)";
+
+  // 몇 번째 공격 액션인가를 자리로 센다. 종류 이름으로 찾으면 안 된다 —
+  // 벳 사이즈가 둘이면 kinds에 "bet"이 두 번 들어가고, 이름으로는 둘을
+  // 구분할 수 없어 다른 사이즈가 같은 색을 받는다.
+  const total = kinds.filter(isAggressive).length;
+  const at = kinds.slice(0, index).filter(isAggressive).length;
+  if (total <= 1) return BET_RAMP[BET_RAMP.length - 1];
+
+  // 사이즈가 둘이면 호박과 빨강. 셋이면 가운데 주황까지 쓴다. 넷을 넘으면
+  // 색이 모자라므로 가장 큰 것만 빨강으로 두고 나머지를 앞쪽에 몰아넣는다.
+  if (total === 2) return at === 0 ? BET_RAMP[0] : BET_RAMP[2];
+  const t = at / (total - 1);
+  return BET_RAMP[Math.min(BET_RAMP.length - 1, Math.round(t * (BET_RAMP.length - 1)))];
 }

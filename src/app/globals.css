@@ -37,6 +37,25 @@
   --gw-action-fold: var(--gw-danger);
   --gw-action-allin: var(--gw-accent-strong);
 
+  /*
+   * 레인지 격자의 색은 브랜드와 따로 간다.
+   *
+   * 강조색은 앱 어디서나 "누를 것, 지금 중요한 것"을 뜻한다. 격자에서 그걸
+   * 콜에 쓰면 같은 색이 두 가지를 뜻하게 되고, 게다가 콜과 벳이 둘 다 민트
+   * 계열이라 20px 칸 안에서 경계가 보이지 않는다. 격자에서 읽어야 할 것이
+   * 바로 그 경계다.
+   *
+   * 그래서 명도가 아니라 색상으로 가른다. 회색에서 파랑, 호박, 빨강으로
+   * 가면 소극적에서 공격적으로 읽히고, 색을 잘 구분하지 못해도 명도 차이가
+   * 남는다.
+   */
+  --gw-range-fold: #39414a;
+  --gw-range-check: #5d6976;
+  --gw-range-call: #3f86cf;
+  --gw-range-bet-1: #d9a03a;
+  --gw-range-bet-2: #dd6f3c;
+  --gw-range-bet-3: #cf4450;
+
   /* 카드는 기존 디자인을 그대로 유지한다. */
   --gw-card-spade: #504f4f;
   --gw-card-heart: #ad0e04;

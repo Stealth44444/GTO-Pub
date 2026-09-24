@@ -10,7 +10,12 @@
 
 import { actionKey, findNode, strategyFor, type SolvedSpot, type TreeNode } from "./tree.ts";
 
-export type MixRow = { label: string; pct: number };
+export type MixRow = {
+  label: string;
+  pct: number;
+  /** 격자와 같은 색을 칠하려면 종류가 필요하다. 라벨은 금액이 붙어 못 쓴다. */
+  kind: string;
+};
 
 /**
  * 이 라인까지 왔을 때 이 플레이어의 핸드별 도달 확률.
@@ -66,6 +71,7 @@ export function rangeMix(
 
   return totals.map((v, a) => ({
     label: labels[a],
+    kind: node.actions[a].kind,
     pct: Math.round((v / grand) * 1000) / 10,
   }));
 }

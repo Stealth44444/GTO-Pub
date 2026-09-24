@@ -46,7 +46,7 @@ export type Decision = {
    * 이 자리에서 레인지 전체가 무엇을 하는가. 내 패 하나의 답보다 이쪽이
    * 배울 것이 많다 — 왜 그런 답이 나오는지가 여기 있다.
    */
-  mix?: { label: string; pct: number }[];
+  mix?: { label: string; pct: number; kind: string }[];
 };
 
 /**

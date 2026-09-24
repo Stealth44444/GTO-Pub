@@ -2,6 +2,7 @@
 
 import { formatEvLoss } from "@/lib/grading";
 import { scoreHand, type Decision } from "@/lib/decisions";
+import { actionColor } from "@/lib/rangeGrid";
 import { textureTags } from "@/lib/texture";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
@@ -124,8 +125,13 @@ export default function HandResult({
  * 격자 위에 한 줄로 둔다. 격자는 칸마다 색이 달라 전체 비율이 눈에 안 들어오고,
  * 정작 기억에 남아야 할 것은 "이 보드는 거의 다 벳한다" 같은 한 문장이다.
  */
-function RangeMixBar({ rows }: { rows: { label: string; pct: number }[] }) {
-  const shown = rows.filter((r) => r.pct >= 0.1);
+function RangeMixBar({ rows }: { rows: { label: string; pct: number; kind: string }[] }) {
+  // 색은 거르기 전 자리로 정한다. 0%인 벳을 먼저 빼버리면 남은 벳의 색이
+  // 한 칸 앞으로 밀려서, 같은 액션이 판마다 다른 색으로 보인다.
+  const kinds = rows.map((r) => r.kind);
+  const shown = rows
+    .map((r, i) => ({ ...r, color: actionColor(r.kind, i, kinds) }))
+    .filter((r) => r.pct >= 0.1);
   if (shown.length === 0) return null;
   return (
     <div className="mt-3">
@@ -136,17 +142,14 @@ function RangeMixBar({ rows }: { rows: { label: string; pct: number }[] }) {
         </span>
       </div>
       <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-[var(--gw-table-header)]">
-        {shown.map((r, i) => (
+        {shown.map((r) => (
           <span
             key={r.label}
             style={{
               width: `${r.pct}%`,
-              // 첫 칸이 가장 소극적인 액션이다. 뒤로 갈수록 진하게 둬서
-              // 막대만 보고도 이 자리가 공격적인지 알 수 있게 한다.
-              backgroundColor:
-                i === 0 ? "var(--gw-border-strong)" : i === shown.length - 1
-                  ? "var(--gw-accent-strong)"
-                  : "var(--gw-accent)",
+              // 바로 아래 격자와 같은 색을 쓴다. 다르면 같은 액션이 두 색으로
+              // 보여서, 막대와 격자를 눈으로 잇는 일이 안 된다.
+              backgroundColor: r.color,
             }}
           />
         ))}

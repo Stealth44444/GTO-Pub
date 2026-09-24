@@ -52,10 +52,18 @@ export default function RangeGrid({ view }: { view: RangeView }) {
                   )}
                 </div>
               )}
+              {/* 7px 글자는 어떤 칸 색 위에 올지 알 수 없다 — 한 칸이 여러
+                  색으로 쪼개지기도 한다. 얇은 검은 외곽선을 둘러 밝은 색
+                  위에서도 읽히게 한다. */}
               <span
                 className={`gw-num absolute inset-0 flex items-center justify-center text-[7px] leading-none ${
-                  cell.freq ? "text-white/75" : "text-[var(--gw-text-muted)]/30"
+                  cell.freq ? "text-white/90" : "text-[var(--gw-text-muted)]/30"
                 }`}
+                style={
+                  cell.freq
+                    ? { textShadow: "0 0 2px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9)" }
+                    : undefined
+                }
               >
                 {cell.code.length === 2 ? cell.code : cell.code.slice(0, 2)}
               </span>
