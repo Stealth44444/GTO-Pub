@@ -1,6 +1,6 @@
 "use client";
 
-export type TabId = "train" | "history" | "stats";
+export type TabId = "train" | "learn" | "history" | "stats";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   {
@@ -9,6 +9,11 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
     icon: (
       <path d="M7 8h10a4 4 0 0 1 4 4v1a3 3 0 0 1-5.4 1.8L15 14H9l-.6.8A3 3 0 0 1 3 13v-1a4 4 0 0 1 4-4Zm0 3v2m-1-1h2m9 0h.01M17 12h.01" />
     ),
+  },
+  {
+    id: "learn",
+    label: "학습",
+    icon: <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5ZM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5Z" />,
   },
   {
     id: "history",
@@ -25,9 +30,12 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 export default function BottomNav({
   active,
   onChange,
+  onAccount,
 }: {
   active: TabId;
   onChange: (tab: TabId) => void;
+  /** 계정은 탭이 아니라 오른쪽 끝의 별도 버튼이다 — 연습 흐름과 층이 다르다. */
+  onAccount: () => void;
 }) {
   return (
     <nav
@@ -57,7 +65,7 @@ export default function BottomNav({
                   }`}
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth={2}
+                  strokeWidth={1.7}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden
@@ -66,7 +74,7 @@ export default function BottomNav({
                 </svg>
               </span>
               <span
-                className={`text-[10px] font-bold ${
+                className={`text-[10px] font-semibold tracking-[-0.01em] ${
                   selected ? "text-[var(--gw-accent)]" : "text-[var(--gw-text-muted)]"
                 }`}
               >
@@ -75,6 +83,34 @@ export default function BottomNav({
             </button>
           );
         })}
+
+        <button
+          type="button"
+          onClick={onAccount}
+          aria-label="계정"
+          className="flex flex-1 flex-col items-center gap-1 py-2.5 transition active:scale-95"
+        >
+          <span className="flex h-8 w-10 items-center justify-center">
+            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-[var(--gw-border-strong)] text-[var(--gw-text-muted)]">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.9}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5" />
+              </svg>
+            </span>
+          </span>
+          <span className="text-[10px] font-semibold tracking-[-0.01em] text-[var(--gw-text-muted)]">
+            계정
+          </span>
+        </button>
       </div>
     </nav>
   );

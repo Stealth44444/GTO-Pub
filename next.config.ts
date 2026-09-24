@@ -2,6 +2,9 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 개발 표시기가 화면 왼쪽 아래에 떠서 하단 내비를 가린다. 모바일 크기로
+  // 보면서 만드는 앱이라 실제 레이아웃 확인을 방해한다.
+  devIndicators: false,
   turbopack: {
     // C:\Users\Sony\package-lock.json 때문에 루트를 잘못 추론하는 걸 방지
     root: path.resolve(__dirname),

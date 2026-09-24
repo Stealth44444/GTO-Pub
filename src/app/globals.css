@@ -1,25 +1,43 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-noto-sans-kr);
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
 }
 
+/*
+ * 계측기(precision instrument)를 기준으로 한 토큰.
+ *
+ * 순수 검정을 배경으로 쓰면 그 위의 모든 회색이 떠 보이고 깊이가 생기지 않는다.
+ * 아주 살짝 푸른 기가 도는 그래파이트에서 출발해, 표면이 올라갈수록 밝아지는
+ * 한 방향의 사다리를 만든다. 어두운 펍 조명에서 대비가 무너지지 않는 범위다.
+ */
 :root {
-  --gw-bg: #000000;
-  --gw-surface-1: #1e1e1e;
-  --gw-surface-2: #1f1f1f;
-  --gw-surface-3: #292929;
-  --gw-table-header: #161616;
-  --gw-border: #333333;
-  --gw-border-strong: #555a5a;
-  --gw-text-primary: #f0f0f0;
-  --gw-text-secondary: #c8c8c8;
-  --gw-text-muted: #8d9393;
-  --gw-accent: #97FEED;
-  --gw-accent-strong: #35A29F;
-  --gw-danger: #e0525f;
+  --gw-bg: #07090b;
+  --gw-surface-1: #0d1013;
+  --gw-surface-2: #14181c;
+  --gw-surface-3: #1c2126;
+  --gw-table-header: #101417;
+
+  /* 테두리는 표면과 같은 사다리를 따라간다. 선이 면보다 튀면 UI가 도면처럼 보인다. */
+  --gw-border: #1e242a;
+  --gw-border-strong: #2c343b;
+
+  --gw-text-primary: #eef2f5;
+  --gw-text-secondary: #a8b3bc;
+  --gw-text-muted: #667079;
+
+  /* 강조색은 장식이 아니라 신호다. 지금 네 차례, 이게 정답, 이만큼 손해. */
+  --gw-accent: #97feed;
+  --gw-accent-strong: #35a29f;
+  --gw-accent-deep: #0b666a;
+  --gw-ink: #071952;
+  --gw-danger: #ff5d6c;
+
   --gw-action-fold: var(--gw-danger);
   --gw-action-allin: var(--gw-accent-strong);
+
+  /* 카드는 기존 디자인을 그대로 유지한다. */
   --gw-card-spade: #504f4f;
   --gw-card-heart: #ad0e04;
   --gw-card-club: #0ead2c;
@@ -28,9 +46,58 @@
   --gw-card-heart-ink: #5f0802;
   --gw-card-club-ink: #085f18;
   --gw-card-diamond-ink: #000080;
-  --gw-radius-control: 6px;
-  --gw-radius-card: 6px;
+
+  /* 칩은 브랜드 계열로. sky-400 같은 기본 팔레트 색이 섞이면 팔레트가 무너진다. */
+  --gw-chip: #35a29f;
+  --gw-chip-rim: #97feed;
+
+  /*
+   * 반경 사다리. 전부 같은 값이면 무엇이 눌리는 것이고 무엇이 담는 것인지
+   * 구분되지 않는다. 작은 것은 날카롭게, 큰 면은 부드럽게.
+   */
+  --gw-radius-control: 8px;
+  --gw-radius-card: 14px;
+  --gw-radius-sheet: 20px;
+
+  /* 높이. 그림자 대신 표면 밝기와 위쪽 하이라이트로 층을 만든다. */
+  --gw-lift-1: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --gw-lift-2: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.6);
+  --gw-lift-sheet: 0 -24px 48px -12px rgba(0, 0, 0, 0.75);
+
   --gw-card-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/*
+ * 계측값 전용 활자. 숫자·포지션·핸드 코드에 붙인다. 고정폭에 자간을 살짝
+ * 조여 표가 흔들리지 않게 한다.
+ */
+.gw-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * 계기판의 눈금 이름. 산문이 아니다.
+ *
+ * 라틴 전용이다. 넓은 자간과 대문자 변환은 알파벳에서만 통하고, 한글에
+ * 걸면 글자가 하나씩 떨어져 보이는 데다 모노 폰트에 한글이 없어 폴백까지
+ * 생긴다. 한글 라벨은 .gw-label-ko를 쓴다.
+ */
+.gw-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gw-text-muted);
+}
+
+.gw-label-ko {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--gw-text-muted);
 }
 
 html {

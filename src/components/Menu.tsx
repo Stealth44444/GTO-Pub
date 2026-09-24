@@ -9,75 +9,50 @@ import {
   type Scenario,
 } from "@/lib/scenarios";
 
-// 카테고리마다 색을 달리해 목록에서 한눈에 구분되게 한다.
-// 올인 판단은 브랜드 액센트, 올인 대응은 같은 계열의 딥틸을 써서 둘이 한 묶음으로
-// 보이게 한다. 나머지는 서로 겹치지 않는 색조를 쓴다.
-const MODE_ICON: Record<ModeId, { tint: string; path: React.ReactNode }> = {
-  // 올인 = 포커 칩
-  pushfold: {
-    tint: "bg-[var(--gw-accent-strong)]",
-    path: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <circle cx="12" cy="12" r="3.5" />
-        <path d="M12 3v3.5M12 17.5V21M3 12h3.5M17.5 12H21" />
-      </>
-    ),
-  },
-  // 올인 대응 = 남의 올인이 나에게 들어온다
-  vsshove: {
-    tint: "bg-[#0B666A]",
-    path: (
-      <>
-        <circle cx="16" cy="12" r="5.5" />
-        <path d="M2.5 12h6.5M6 8.5 2.5 12 6 15.5" />
-      </>
-    ),
-  },
-  // 오프닝 = 레인지 표(13×13 매트릭스)를 고르는 일
-  rfi: {
-    tint: "bg-[#3b82f6]",
-    path: (
-      <>
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-      </>
-    ),
-  },
-  // 대응 = 들어온 액션에 되받아친다
-  vsopen: {
-    tint: "bg-[#ef4444]",
-    path: (
-      <>
-        <path d="M3 8h14M13 4l4 4-4 4" />
-        <path d="M21 16H7M11 20l-4-4 4-4" />
-      </>
-    ),
-  },
-  // 한 판 전체 = 프리플랍에서 리버까지 이어지는 흐름
-  hand: {
-    tint: "bg-[#f59e0b]",
-    path: (
-      <>
-        <path d="M3 18V9" />
-        <path d="M9 18V6" />
-        <path d="M15 18v-9" />
-        <path d="M21 18V4" />
-        <path d="M2 21h20" />
-      </>
-    ),
-  },
-  // ICM = 칩이 아니라 상금
-  icm: {
-    tint: "bg-[#a855f7]",
-    path: (
-      <>
-        <path d="M8 3.5h8V9a4 4 0 0 1-8 0z" />
-        <path d="M8 5H5.5v1.2A3 3 0 0 0 8 9.2M16 5h2.5v1.2A3 3 0 0 1 16 9.2" />
-        <path d="M12 13v4M8.5 20.5h7" />
-      </>
-    ),
-  },
+/*
+ * 카테고리 아이콘은 단색 선화로만 둔다.
+ *
+ * 채도 높은 플랫 컬러 스쿼클 타일은 iOS 설정 화면을 흉내 낸 흔한 기본값이고,
+ * 색이 의미를 나르지 않으면서 브랜드 팔레트만 망가뜨린다. 여기서 색은 신호
+ * 전용이다 — 지금 고른 것, 지금 차례, 이만큼 손해.
+ */
+const MODE_ICON: Record<ModeId, React.ReactNode> = {
+  pushfold: (
+    <>
+      <circle cx="12" cy="12" r="8.25" />
+      <circle cx="12" cy="12" r="3.25" />
+      <path d="M12 3.75v2.5M12 17.75v2.5M3.75 12h2.5M17.75 12h2.5" />
+    </>
+  ),
+  vsshove: (
+    <>
+      <circle cx="16.5" cy="12" r="4.25" />
+      <path d="M10.5 12H3.25M6.5 8.25 3.25 12l3.25 3.75" />
+    </>
+  ),
+  rfi: (
+    <>
+      <path d="M12 20V6" />
+      <path d="m6.5 11.5 5.5-5.5 5.5 5.5" />
+    </>
+  ),
+  vsopen: (
+    <>
+      <path d="M3.5 9h13M13 5.5 16.5 9 13 12.5" />
+      <path d="M20.5 15h-13M11 11.5 7.5 15l3.5 3.5" />
+    </>
+  ),
+  hand: (
+    <>
+      <path d="M3 19.5h18" />
+      <path d="M4.5 16V12M9.5 16V8.5M14.5 16v-6M19.5 16V5" />
+    </>
+  ),
+  icm: (
+    <>
+      <path d="M12 3.5 14.6 9l6 .9-4.3 4.2 1 6-5.3-2.8-5.3 2.8 1-6L3.4 9.9 9.4 9z" />
+    </>
+  ),
 };
 
 function Chip({
@@ -93,10 +68,10 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-[var(--gw-radius-control)] px-3 py-2 text-sm font-bold transition active:scale-95 ${
+      className={`gw-num rounded-[var(--gw-radius-control)] border px-3 py-1.5 text-[13px] font-semibold transition active:scale-95 ${
         selected
-          ? "bg-[var(--gw-accent)] text-[var(--gw-bg)]"
-          : "bg-[var(--gw-table-header)] text-[var(--gw-text-secondary)]"
+          ? "border-[var(--gw-accent)] bg-[var(--gw-accent)]/12 text-[var(--gw-accent)]"
+          : "border-[var(--gw-border)] bg-transparent text-[var(--gw-text-muted)]"
       }`}
     >
       {children}
@@ -132,17 +107,26 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
               className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-[50%_38%]"
             />
           </picture>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[var(--gw-bg)]/45 to-[var(--gw-bg)]" />
-          <h1 className="absolute inset-x-4 bottom-3 text-[28px] font-black leading-[1.15] tracking-tight text-[var(--gw-text-primary)]">
-            Train Like a Solver
-            <br />
-            with GTO Pub
-          </h1>
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--gw-bg)]/30 via-[var(--gw-bg)]/55 to-[var(--gw-bg)]" />
+          {/* 제목을 눈금 라벨 + 산문 두 층으로 나눈다. 한 덩어리 볼드 헤드라인보다
+              읽는 순서가 분명하고, 계측기라는 성격이 첫 화면에서 드러난다. */}
+          <div className="absolute inset-x-5 bottom-4">
+            <span className="gw-label text-[var(--gw-accent-strong)]">GTO PUB</span>
+            <h1 className="mt-2 text-[30px] font-bold leading-[1.1] tracking-[-0.03em] text-[var(--gw-text-primary)]">
+              솔버가 푼 대로
+              <br />
+              한 판씩 쳐본다
+            </h1>
+          </div>
         </div>
+        {/* 이미지가 검정으로 녹아 끝나면 어디까지가 사진인지 알 수 없어 화면이
+            흐리멍덩해진다. 가는 선으로 경계를 준다. */}
+        <div className="mx-5 h-px bg-gradient-to-r from-transparent via-[var(--gw-border-strong)] to-transparent" />
       </section>
 
-      <div className="flex flex-col gap-6 px-4 pb-6 pt-6">
-        <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-5 px-5 pb-28 pt-6">
+        <section className="flex flex-col gap-2">
+          <span className="gw-label-ko mb-1">무엇을 연습할까</span>
           {MODES.map((info) => {
             const selected = mode === info.id && info.available;
             const expanded = openMode === info.id && info.available;
@@ -152,7 +136,12 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
             return (
               <div
                 key={info.id}
-                className="relative overflow-hidden rounded-[var(--gw-radius-control)] bg-[var(--gw-table-header)]"
+                className={`relative overflow-hidden rounded-[var(--gw-radius-card)] border transition-colors ${
+                  selected
+                    ? "border-[var(--gw-accent-strong)]/55 bg-[var(--gw-surface-2)]"
+                    : "border-[var(--gw-border)] bg-[var(--gw-surface-1)]"
+                } ${info.available ? "" : "opacity-60"}`}
+                style={{ boxShadow: "var(--gw-lift-1)" }}
               >
                 {/* 헤더만 선택 대상. 카드 안에 설정 칩(버튼)이 들어가므로
                     카드 자체를 button으로 두면 버튼이 중첩된다. */}
@@ -162,33 +151,31 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                   onClick={() => selectMode(info.id)}
                   aria-pressed={selected}
                   aria-expanded={info.available ? expanded : undefined}
-                  className="flex w-full items-center gap-3 px-3 py-3 text-left transition active:scale-[0.99]"
+                  className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition active:scale-[0.995]"
                 >
-                  <span
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--gw-radius-control)] ${icon.tint}`}
+                  <svg
+                    viewBox="0 0 24 24"
+                    className={`h-[22px] w-[22px] shrink-0 transition-colors ${
+                      selected ? "text-[var(--gw-accent)]" : "text-[var(--gw-text-muted)]"
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-7 w-7 text-[var(--gw-bg)]"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      {icon.path}
-                    </svg>
-                  </span>
+                    {icon}
+                  </svg>
                   <span className="min-w-0 flex-1">
                     <span
-                      className={`block text-sm font-bold text-[var(--gw-text-primary)] ${
+                      className={`block text-[15px] font-semibold tracking-[-0.01em] text-[var(--gw-text-primary)] ${
                         info.available ? "" : "pr-16"
                       }`}
                     >
                       {info.title}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
+                    <span className="mt-1 block text-[12px] leading-[1.5] text-[var(--gw-text-muted)]">
                       {info.available ? info.summary : info.unavailableReason}
                     </span>
                   </span>
@@ -224,11 +211,9 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                     }`}
                   >
                     <div className="overflow-hidden">
-                      <div className="flex flex-col gap-3 border-t border-[var(--gw-border)] px-3 pb-3 pt-3">
+                      <div className="flex flex-col gap-3.5 border-t border-[var(--gw-border)] px-4 pb-4 pt-3.5">
                         <div className="flex flex-col gap-1.5">
-                          <h3 className="text-[11px] font-bold tracking-wide text-[var(--gw-text-muted)]">
-                            테이블 인원
-                          </h3>
+                          <h3 className="gw-label-ko">테이블 인원</h3>
                           <div className="flex flex-wrap gap-2">
                             {PUSHFOLD_TABLE_SIZES.map((size) => (
                               <Chip
@@ -243,9 +228,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                          <h3 className="text-[11px] font-bold tracking-wide text-[var(--gw-text-muted)]">
-                            스택 깊이
-                          </h3>
+                          <h3 className="gw-label-ko">스택 깊이</h3>
                           <div className="flex flex-wrap gap-2">
                             <Chip selected={stackBb === null} onClick={() => setStackBb(null)}>
                               랜덤
@@ -269,7 +252,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                 {/* 배지는 준비 중일 때만. 이용 가능한 건 기본 상태이므로
                     굳이 라벨을 붙일 이유가 없다. */}
                 {!info.available && (
-                  <span className="absolute right-3 top-3 rounded-full bg-[var(--gw-surface-3)] px-2 py-0.5 text-[10px] font-bold text-[var(--gw-text-muted)]">
+                  <span className="gw-label-ko absolute right-4 top-4 rounded-[4px] border border-[var(--gw-border)] px-1.5 py-0.5 text-[10px]">
                     준비 중
                   </span>
                 )}
@@ -281,7 +264,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
         <button
           type="button"
           onClick={() => onStart({ mode, tableSize, stackBb })}
-          className="rounded-[var(--gw-radius-control)] bg-[var(--gw-accent-strong)] py-4 text-lg font-bold text-[var(--gw-text-primary)] transition active:scale-[0.98]"
+          className="flex items-center justify-center gap-2.5 rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-4 text-[16px] font-bold tracking-[-0.01em] text-[var(--gw-ink)] transition active:scale-[0.98]"
         >
           시작하기
         </button>

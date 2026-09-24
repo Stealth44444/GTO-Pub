@@ -23,8 +23,26 @@ const SYMBOL_SIZE: Record<Suit, string> = {
   s: "text-[54px] sm:text-[60px]",
   h: "text-[54px] sm:text-[60px]",
   c: "text-[54px] sm:text-[60px]",
-  // 같은 폰트 크기에서도 ♦ 글리프의 실제 폭이 작아 보여 보정한다.
-  d: "text-[68px] sm:text-[76px]",
+  // ♦만 작다. 아래 주석 참고.
+  d: "text-[40px] sm:text-[45px]",
+};
+
+/**
+ * ♦는 마름모라 다른 슈트와 다르게 다뤄야 한다.
+ *
+ * ♥·♣·♠는 둥근 덩어리여서 모서리에서 잘려도 덩어리로 남지만, 마름모는 잘리면
+ * 늘 긴 직선 사선이 남아 카드를 가로지르는 것처럼 보인다. 예전에는 폭이 좁아
+ * 보인다고 글자 크기를 키웠는데, 그러면 높이까지 같이 커져서 사선이 더
+ * 길어졌다.
+ *
+ * 그래서 반대로 간다. 크기를 줄여 사선을 짧게 만들고, 모자란 폭은 가로로만
+ * 늘려 채우고, 아래로 조금 더 밀어 다른 슈트와 같은 자리에 앉힌다.
+ */
+const SYMBOL_TRANSFORM: Record<Suit, string> = {
+  s: "translateX(38%)",
+  h: "translateX(38%)",
+  c: "translateX(38%)",
+  d: "translateX(40%) translateY(18%) scaleX(1.4)",
 };
 
 export default function Card({
@@ -49,7 +67,8 @@ export default function Card({
         {rank === "T" ? "10" : rank}
       </div>
       <div
-        className={`absolute bottom-0 right-0 translate-x-[38%] leading-none opacity-90 ${SYMBOL_SIZE[suit]} ${SYMBOL_COLOR[suit]}`}
+        style={{ transform: SYMBOL_TRANSFORM[suit] }}
+        className={`absolute bottom-0 right-0 leading-none opacity-90 ${SYMBOL_SIZE[suit]} ${SYMBOL_COLOR[suit]}`}
       >
         {SUIT_GLYPH[suit]}
       </div>

@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import BottomNav, { type TabId } from "./BottomNav";
+import AccountSheet from "./AccountSheet";
 import HistoryPanel from "./HistoryPanel";
+import LearnPanel from "./LearnPanel";
 import Menu from "./Menu";
 import StatsPanel from "./StatsPanel";
 import HandTrainer from "./HandTrainer";
@@ -22,6 +24,7 @@ const Trainer = dynamic(() => import("@/components/Trainer"), {
 export default function TrainerClient() {
   const [tab, setTab] = useState<TabId>("train");
   const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const changeTab = (next: TabId) => {
     // 트레이닝 탭을 다시 누르면 설정 화면으로 돌아간다 (나가기 버튼 대신).
@@ -45,10 +48,12 @@ export default function TrainerClient() {
           ) : (
             <Menu onStart={setScenario} />
           ))}
+        {tab === "learn" && <LearnPanel />}
         {tab === "history" && <HistoryPanel />}
         {tab === "stats" && <StatsPanel />}
       </main>
-      <BottomNav active={tab} onChange={changeTab} />
+      <BottomNav active={tab} onChange={changeTab} onAccount={() => setAccountOpen(true)} />
+      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} />}
     </div>
   );
 }
