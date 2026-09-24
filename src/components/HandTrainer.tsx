@@ -82,8 +82,11 @@ function dealHandCode(rnd: () => number): string {
   return ALL_HANDS[0].code;
 }
 
-function freshRound(): Round {
-  const heroSeat = SEATS[Math.floor(Math.random() * SEATS.length)];
+function freshRound(fixedSeat?: string | null): Round {
+  const heroSeat =
+    fixedSeat && SEATS.includes(fixedSeat)
+      ? fixedSeat
+      : SEATS[Math.floor(Math.random() * SEATS.length)];
   const hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
   // 히어로가 실제로 쥔 두 장. 이걸 안 정하면 테이블이 더미 핸드를 그린다.
   const heroCombo = dealCombo(hands[heroSeat], new Set(), Math.random) ?? ["Ah", "Ad"];
@@ -102,9 +105,9 @@ function freshRound(): Round {
   };
 }
 
-export default function HandTrainer() {
+export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [entries, setEntries] = useState<SpotEntry[] | null>(null);
-  const [round, setRound] = useState<Round | null>(freshRound);
+  const [round, setRound] = useState<Round | null>(() => freshRound(seat));
   const [phase, setPhase] = useState<Phase>("preflop");
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -126,8 +129,8 @@ export default function HandTrainer() {
     setPhase("preflop");
     setRevealed(0);
     loggedRef.current = null;
-    setRound(freshRound());
-  }, [clearTimers]);
+    setRound(freshRound(seat));
+  }, [clearTimers, seat]);
 
   useEffect(() => {
     loadSpotIndex()

@@ -109,12 +109,20 @@ export type Scenario = {
   tableSize: number;
   /** 고정 스택. null이면 매 핸드 무작위로 고른다. */
   stackBb: number | null;
+  /**
+   * 한 판 전체 모드에서 앉을 자리. null이면 매 판 무작위다.
+   *
+   * 약한 자리만 반복해서 치는 게 실력이 붙는 길이다. 아홉 자리를 섞어 돌리면
+   * 같은 상황을 다시 만나기까지 너무 오래 걸린다.
+   */
+  seat?: string | null;
 };
 
 export const DEFAULT_SCENARIO: Scenario = {
   mode: "pushfold",
   tableSize: 9,
   stackBb: null,
+  seat: null,
 };
 
 /** 한 핸드에서 히어로가 놓인 구체적 상황. */

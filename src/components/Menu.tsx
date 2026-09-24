@@ -8,6 +8,10 @@ import {
   type ModeId,
   type Scenario,
 } from "@/lib/scenarios";
+import { seatNames } from "@/lib/poker";
+
+/** 한 판 전체 모드에서 고를 수 있는 자리. */
+const HAND_SEATS = seatNames(9);
 
 /*
  * 카테고리 아이콘은 단색 선화로만 둔다.
@@ -84,6 +88,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
   const [openMode, setOpenMode] = useState<ModeId | null>(null);
   const [tableSize, setTableSize] = useState(9);
   const [stackBb, setStackBb] = useState<number | null>(null);
+  const [seat, setSeat] = useState<string | null>(null);
 
   // 카테고리를 고르면 그 조건이 드롭다운되고, 같은 카드를 다시 누르면 접힌다.
   // 접어도 mode는 유지되므로 곧바로 시작하기를 눌러도 된다.
@@ -203,6 +208,34 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
 
                     grid-rows 0fr↔1fr은 높이를 모르는 내용도 펼침/접힘을 전환할 수 있게 해준다.
                     조건부 마운트로는 전환 시작 상태가 없어 애니메이션이 걸리지 않는다. */}
+                {info.id === "hand" && (
+                  <div
+                    aria-hidden={!expanded}
+                    className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+                      expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="flex flex-col gap-2 border-t border-[var(--gw-border)] px-4 pb-4 pt-3.5">
+                        <h3 className="gw-label-ko">앉을 자리</h3>
+                        <div className="flex flex-wrap gap-2">
+                          <Chip selected={seat === null} onClick={() => setSeat(null)}>
+                            랜덤
+                          </Chip>
+                          {HAND_SEATS.map((s) => (
+                            <Chip key={s} selected={seat === s} onClick={() => setSeat(s)}>
+                              {s}
+                            </Chip>
+                          ))}
+                        </div>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
+                          약한 자리 하나만 반복해서 치면 같은 상황을 빨리 다시 만납니다.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {(info.id === "pushfold" || info.id === "vsshove") && (
                   <div
                     aria-hidden={!expanded}
@@ -263,7 +296,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
 
         <button
           type="button"
-          onClick={() => onStart({ mode, tableSize, stackBb })}
+          onClick={() => onStart({ mode, tableSize, stackBb, seat })}
           className="flex items-center justify-center gap-2.5 rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-4 text-[16px] font-bold tracking-[-0.01em] text-[var(--gw-ink)] transition active:scale-[0.98]"
         >
           시작하기

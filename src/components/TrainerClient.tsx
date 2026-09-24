@@ -38,7 +38,7 @@ export default function TrainerClient() {
         {tab === "train" &&
           (scenario ? (
             scenario.mode === "hand" ? (
-              <HandTrainer key="hand" />
+              <HandTrainer key={`hand-${scenario.seat ?? "any"}`} seat={scenario.seat} />
             ) : (
               <Trainer
                 key={`${scenario.mode}-${scenario.tableSize}-${scenario.stackBb}`}
