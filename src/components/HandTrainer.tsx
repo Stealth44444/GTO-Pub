@@ -442,13 +442,13 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
       const note =
         outcome.kind === "allin"
-          ? "올인 대결로 끝났습니다"
+          ? "올인 쇼다운"
           : outcome.kind === "flop"
             ? // 내가 낀 판이 아니다. 바로 위에서 다시 돌리므로 보일 일은 없다.
               `${outcome.opener}와 ${outcome.caller}의 판입니다`
             : outcome.winner === round.heroSeat
-              ? "다들 접어서 내가 가져갑니다"
-              : `${outcome.winner}가 가져갑니다`;
+              ? "모두 폴드, 팟 획득"
+              : `${outcome.winner} 팟 획득`;
       const t = window.setTimeout(() => {
         if (board && cards) {
           setShown(true);
@@ -512,7 +512,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         const blocked = new Set([...board, ...(heroCombo ?? [])]);
         const villainCombo = dealCombo(round.hands[villainSeat], blocked, Math.random);
         if (!heroCombo || !villainCombo) {
-          setEnding("이 보드와 카드가 겹쳐 플랍을 깔 수 없었습니다");
+          setEnding("이 판은 여기까지입니다");
           setPhase("over");
           return;
         }
@@ -527,7 +527,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         // 상대 핸드가 레인지 밖이면 상대를 움직일 방법이 없다. 이건 드물고,
         // 이때만 판을 접는다.
         if (handIdx[1 - heroPlayer] < 0) {
-          setEnding("상대 핸드가 솔버 레인지 밖이라 이 보드를 칠 수 없었습니다");
+          setEnding("이 판은 여기까지입니다");
           setPhase("over");
           return;
         }
@@ -601,8 +601,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           setShown(!folded);
           setEnding(
             folded
-              ? `상대가 접었습니다`
-              : `상대가 ${actionLabel(node.actions[idx])}으로 받았습니다 — 카드를 깝니다`,
+              ? "상대 폴드"
+              : `상대 ${actionLabel(node.actions[idx])} · 쇼다운`,
           );
         }
         return { ...cur, post: next };
@@ -823,7 +823,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       const folded = node.actions[index].kind === "fold";
       setShown(!folded);
       setEnding(
-        folded ? "내가 접었습니다" : `내가 ${labels[index]}으로 받았습니다 — 카드를 깝니다`,
+        folded ? "폴드" : `${labels[index]} · 쇼다운`,
       );
     }
     setRound((cur) => (cur ? { ...cur, post: next } : cur));
@@ -875,7 +875,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     >
       <header className="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between bg-[var(--gw-bg)]/90 px-4 backdrop-blur-sm">
         <div className="gw-num text-[11px] font-semibold text-[var(--gw-text-secondary)]">
-          {street} · {heroSeat} · {round.hands[heroSeat]}
+          {street} · {heroSeat}
         </div>
         <div className="gw-num text-[11px] text-[var(--gw-text-muted)]">
           {SEATS_DATA.stackBb}bb · 앤티 {SEATS_DATA.anteBb}
@@ -1061,10 +1061,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           handCode={round.hands[round.heroSeat]}
           note={ending ?? "핸드 종료"}
           caveat={
-            phase === "postflop" && villainSeat
-              ? heroOutOfRange
-                ? `${round.hands[round.heroSeat]}로 여기까지 온 것은 솔버 레인지 밖입니다. 솔버가 이 패를 들고 이 자리에 오지 않으니 비교할 값이 없어 채점하지 못합니다 — 판은 끝까지 쳐보실 수 있습니다.`
-                : boardCaveat(round.boardFit, round.game.outcome, heroSeat, villainSeat)
+            phase === "postflop" && heroOutOfRange
+              ? "이 패로는 여기까지 오지 않는 게 정답이라, 플랍부터는 비교할 정답이 없습니다."
               : undefined
           }
           showdown={
@@ -1116,24 +1114,4 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       )}
     </div>
   );
-}
-
-/**
- * 이 보드로 매긴 값이 어디까지 믿을 만한지.
- *
- * 맞는 조건에서 경고를 띄우면 다음부터 경고를 안 읽는다. 그래서 정확히
- * 무엇이 다른지만 말하고, 다 맞으면 아무 말도 하지 않는다.
- */
-function boardCaveat(
-  fit: "exact" | "opener" | "none",
-  outcome: { kind: string; opener?: string } | null,
-  heroSeat: string,
-  villainSeat: string,
-): string | undefined {
-  if (fit === "exact") return undefined;
-  if (fit === "opener") {
-    const opener = outcome?.kind === "flop" ? outcome.opener : null;
-    return `${opener ?? "오프너"} 자리에 맞는 보드를 쓰지만, SB 콜이 아니라 BB 콜로 풀린 데이터입니다. 먼저 치는 순서는 같고 콜 레인지만 다릅니다.`;
-  }
-  return `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`;
 }

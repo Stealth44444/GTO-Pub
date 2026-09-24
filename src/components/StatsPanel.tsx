@@ -95,7 +95,7 @@ export default function StatsPanel() {
     return (
       <PanelMessage
         title="통계"
-        body="기록 서버에 연결하지 못했습니다. 연습은 그대로 할 수 있지만 통계는 쌓이지 않습니다."
+        body="지금은 통계를 불러올 수 없습니다."
       />
     );
   }
@@ -103,7 +103,7 @@ export default function StatsPanel() {
     return (
       <PanelMessage
         title="통계"
-        body="아직 기록이 없습니다. 한 판 연습하고 나면 어떤 스팟에서 얼마나 잃고 있는지 보여드립니다."
+        body="아직 기록이 없습니다."
       />
     );
   }

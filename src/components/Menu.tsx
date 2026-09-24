@@ -84,7 +84,7 @@ function Chip({
 }
 
 export default function Menu({ onStart }: { onStart: (scenario: Scenario) => void }) {
-  const [mode, setMode] = useState<ModeId>("pushfold");
+  const [mode, setMode] = useState<ModeId>("hand");
   const [openMode, setOpenMode] = useState<ModeId | null>(null);
   const [tableSize, setTableSize] = useState(9);
   const [stackBb, setStackBb] = useState<number | null>(null);
@@ -113,26 +113,20 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
             />
           </picture>
           <div className="absolute inset-0 bg-gradient-to-b from-[var(--gw-bg)]/30 via-[var(--gw-bg)]/55 to-[var(--gw-bg)]" />
-          {/* 제목을 눈금 라벨 + 산문 두 층으로 나눈다. 한 덩어리 볼드 헤드라인보다
-              읽는 순서가 분명하고, 계측기라는 성격이 첫 화면에서 드러난다. */}
-          <div className="absolute inset-x-5 bottom-4">
-            <span className="gw-label text-[var(--gw-accent-strong)]">GTO PUB</span>
-            <h1 className="mt-2 text-[30px] font-bold leading-[1.1] tracking-[-0.03em] text-[var(--gw-text-primary)]">
-              솔버가 푼 대로
-              <br />
-              한 판씩 쳐본다
-            </h1>
-          </div>
+          <h1 className="absolute inset-x-5 bottom-4 text-[30px] font-bold leading-none tracking-[-0.03em] text-[var(--gw-text-primary)]">
+            GTO Pub
+          </h1>
         </div>
-        {/* 이미지가 검정으로 녹아 끝나면 어디까지가 사진인지 알 수 없어 화면이
-            흐리멍덩해진다. 가는 선으로 경계를 준다. */}
-        <div className="mx-5 h-px bg-gradient-to-r from-transparent via-[var(--gw-border-strong)] to-transparent" />
       </section>
 
       <div className="flex flex-col gap-5 px-5 pb-28 pt-6">
         <section className="flex flex-col gap-2">
-          <span className="gw-label-ko mb-1">무엇을 연습할까</span>
-          {MODES.map((info) => {
+          {/* 준비 중인 모드는 보여주지 않는다. 누를 수 없는 카드는 목록만 길게 만든다.
+              메인 게임인 한 판 전체를 맨 위에 둔다. */}
+          {[...MODES]
+            .filter((m) => m.available)
+            .sort((a, b) => Number(b.id === "hand") - Number(a.id === "hand"))
+            .map((info) => {
             const selected = mode === info.id && info.available;
             const expanded = openMode === info.id && info.available;
             const icon = MODE_ICON[info.id];
@@ -180,9 +174,6 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                     >
                       {info.title}
                     </span>
-                    <span className="mt-1 block text-[12px] leading-[1.5] text-[var(--gw-text-muted)]">
-                      {info.available ? info.summary : info.unavailableReason}
-                    </span>
                   </span>
                   {info.available && (
                     <svg
@@ -228,9 +219,6 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
                             </Chip>
                           ))}
                         </div>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
-                          약한 자리 하나만 반복해서 치면 같은 상황을 빨리 다시 만납니다.
-                        </p>
                       </div>
                     </div>
                   </div>

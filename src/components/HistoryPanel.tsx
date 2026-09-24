@@ -78,7 +78,7 @@ export default function HistoryPanel() {
     state.status === "loading"
       ? "기록을 불러오는 중입니다."
       : state.status === "unavailable"
-        ? "기록 서버에 연결하지 못했습니다. 연습은 그대로 할 수 있지만 기록은 남지 않습니다."
+        ? "지금은 기록을 불러올 수 없습니다."
         : played.length === 0
           ? "아직 기록이 없습니다. 한 판 연습하면 여기에 쌓입니다."
           : null;

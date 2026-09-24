@@ -14,9 +14,8 @@ const serverIdentity = (): Identity | null => null;
 /**
  * 계정 화면.
  *
- * 로그인은 아직 붙지 않았다. 그렇다고 눌리는 것처럼 보이는 버튼을 놓으면
- * 눌러본 사람이 고장으로 받아들인다. 무엇이 준비됐고 무엇이 안 됐는지,
- * 지금 기록이 어디에 남는지를 그대로 쓴다.
+ * 로그인 수단은 쓸 수 있게 된 것만 보여준다. 누를 수 없는 버튼과 "준비 중"
+ * 같은 내부 사정은 사용자에게 할 이야기가 아니다.
  */
 export default function AccountSheet({
   onClose,
@@ -37,8 +36,7 @@ export default function AccountSheet({
       >
         <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-[var(--gw-border-strong)]" />
 
-        <span className="gw-label-ko">지금 상태</span>
-        <div className="mt-2 flex items-center gap-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-2)] px-4 py-3.5">
+        <div className="flex items-center gap-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-2)] px-4 py-3.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--gw-border-strong)] text-[var(--gw-text-muted)]">
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="8" r="3.5" />
@@ -49,44 +47,36 @@ export default function AccountSheet({
             <p className="text-[14px] font-semibold text-[var(--gw-text-primary)]">
               {identity?.kind === "user" ? (identity.nickname ?? "회원") : "게스트로 이용 중"}
             </p>
-            <p className="gw-num mt-0.5 truncate text-[11px] text-[var(--gw-text-muted)]">
-              {identity ? identity.id.slice(0, 8) : "…"}
-            </p>
+            {identity?.kind !== "user" && (
+              <p className="mt-0.5 text-[12px] text-[var(--gw-text-muted)]">
+                기록은 이 기기에 저장됩니다
+              </p>
+            )}
           </div>
         </div>
 
-        <p className="mt-3 text-[12px] leading-[1.6] text-[var(--gw-text-muted)]">
-          기록은 이 기기에만 묶여 있습니다. 앱을 지우거나 다른 기기에서 열면 통계가
-          처음부터 시작합니다. 로그인이 생기면 지금까지 친 기록을 그대로 옮겨 줍니다.
-        </p>
-
-        <span className="gw-label-ko mt-6 block">로그인</span>
-        <div className="mt-2 flex flex-col gap-2">
-          {AUTH_PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              disabled={!p.available}
-              className="flex items-center justify-between rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left opacity-55 transition disabled:cursor-not-allowed"
-            >
-              <span className="text-[14px] font-semibold text-[var(--gw-text-primary)]">
+        {AUTH_PROVIDERS.some((p) => p.available) && (
+          <div className="mt-4 flex flex-col gap-2">
+            {AUTH_PROVIDERS.filter((p) => p.available).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left text-[14px] font-semibold text-[var(--gw-text-primary)] transition active:scale-[0.98]"
+              >
                 {p.label}
-              </span>
-              <span className="gw-label-ko text-[10px]">{p.note}</span>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        )}
 
-        <span className="gw-label-ko mt-6 block">앱 사용법</span>
         <button
           type="button"
           onClick={onOpenGuide}
-          className="mt-2 flex w-full items-center justify-between rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
+          className="mt-4 flex w-full items-center justify-between rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
         >
           <span className="text-[14px] font-semibold text-[var(--gw-text-primary)]">
-            처음 안내 다시 보기
+            사용법 다시 보기
           </span>
-          <span className="gw-label-ko text-[10px]">4장</span>
         </button>
 
         <button

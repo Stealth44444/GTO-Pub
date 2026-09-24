@@ -41,7 +41,7 @@ export default function ReviewPanel() {
     return (
       <PanelMessage
         title="복습"
-        body="기록 서버에 연결하지 못했습니다. 복습할 스팟을 찾으려면 기록이 필요합니다."
+        body="지금은 복습을 불러올 수 없습니다."
       />
     );
   }
@@ -49,7 +49,7 @@ export default function ReviewPanel() {
     return (
       <PanelMessage
         title="복습"
-        body="다시 볼 스팟이 아직 없습니다. 손해가 컸던 판단이 쌓이면 여기 모입니다."
+        body="다시 볼 판단이 아직 없습니다."
       />
     );
   }

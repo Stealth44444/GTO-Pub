@@ -103,5 +103,6 @@ export function formatEv(evBb: number): string {
 /** EV 손실 표시용. 0은 손실 없음이라 따로 쓰지 않는다. */
 export function formatEvLoss(evLossBb: number): string {
   if (evLossBb <= 0) return "손실 없음";
-  return `-${evLossBb.toFixed(evLossBb < 0.1 ? 3 : 2)}bb`;
+  // 0.01bb 아래는 최선 구간이라 손실로 적을 일이 없다. 둘째 자리면 충분하다.
+  return `-${evLossBb.toFixed(2)}bb`;
 }

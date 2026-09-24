@@ -1,7 +1,7 @@
 "use client";
 
 import type { DecisionRow } from "@/lib/decisions";
-import { formatEv, formatEvLoss, gradeByEvLoss } from "@/lib/grading";
+import { formatEvLoss, gradeByEvLoss } from "@/lib/grading";
 import GradeIcon from "./GradeIcon";
 
 /**
@@ -43,12 +43,13 @@ export default function DecisionRows({
             <span className="flex-1 text-[13px] font-semibold text-[var(--gw-text-primary)]">
               {row.label}
             </span>
-            <span className="gw-num w-[68px] shrink-0 text-right text-[11px] text-[var(--gw-text-muted)]">
-              {row.lossBb === null ? "—" : row.lossBb === 0 ? "BEST" : formatEvLoss(row.lossBb)}
-            </span>
-            <span className="gw-num w-[68px] shrink-0 text-right text-[13px] font-semibold text-[var(--gw-text-secondary)]">
-              {row.evBb === null ? "—" : formatEv(row.evBb)}
-            </span>
+            {/* 손실만 적는다. 최선은 아이콘이 이미 말하고, EV를 따로 적으면 같은
+                차이를 숫자 두 개로 두 번 말하게 된다. */}
+            {row.lossBb !== null && row.lossBb > 0 && (
+              <span className="gw-num shrink-0 text-right text-[12px] text-[var(--gw-text-muted)]">
+                {formatEvLoss(row.lossBb)}
+              </span>
+            )}
           </div>
         );
       })}

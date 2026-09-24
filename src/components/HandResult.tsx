@@ -68,12 +68,11 @@ export default function HandResult({
             </span>
           )}
         </div>
-        <p className="gw-num mt-1.5 text-center text-[11px] text-[var(--gw-text-muted)]">
-          판단 {decisions.length}번
-          {score.gradedCount > 0 &&
-            ` · ${score.totalLossBb === 0 ? "손실 없음" : formatEvLoss(score.totalLossBb)}`}
-          {score.ungradedCount > 0 && ` · ${score.ungradedCount}번 채점 불가`}
-        </p>
+        {score.totalLossBb > 0 && (
+          <p className="gw-num mt-1.5 text-center text-[12px] text-[var(--gw-text-muted)]">
+            {formatEvLoss(score.totalLossBb)}
+          </p>
+        )}
         <p className="mt-1 text-center text-[11px] text-[var(--gw-text-muted)]">{note}</p>
 
 
@@ -226,7 +225,9 @@ function DecisionDetail({
   const d = decisions[selected];
   return (
     <div className="mt-4">
-      <div role="tablist" aria-label="판단" className="flex gap-1.5">
+      {/* 판단이 하나뿐이면 고를 것이 없으니 칩 줄을 그리지 않는다. */}
+      {decisions.length > 1 && (
+      <div role="tablist" aria-label="판단" className="mb-3 flex gap-1.5">
         {decisions.map((x, i) => {
           const active = i === selected;
           return (
@@ -260,19 +261,9 @@ function DecisionDetail({
           );
         })}
       </div>
+      )}
 
-      <div role="tabpanel" className="mt-3">
-        <div className="mb-2 flex items-baseline gap-2">
-          <span className="gw-label-ko">내 선택</span>
-          <span className="text-[13px] font-semibold text-[var(--gw-text-primary)]">
-            {d.chosen}
-          </span>
-        </div>
-        {d.lossBb === null && (
-          <p className="mb-2 text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
-            앞선 판단으로 이 패가 GTO 레인지를 벗어나, 이 상황은 비교할 정답이 없습니다.
-          </p>
-        )}
+      <div role="tabpanel">
         {d.board.length >= 3 && <BoardTags board={d.board} />}
         <DecisionRows rows={d.rows} chosen={d.chosen} />
         {d.jam && (

@@ -85,11 +85,7 @@ export default function LearnPanel() {
 
   return (
     <div className="mx-auto h-full w-full max-w-md overflow-y-auto px-5 pb-28 pt-6">
-      <span className="gw-label-ko">왜 그런지 읽어보기</span>
-      <p className="mt-1.5 text-[13px] leading-[1.6] text-[var(--gw-text-muted)]">
-        트레이너는 무엇이 맞는지 알려줍니다. 여기서는 왜 그런지를 다룹니다.
-      </p>
-      <div className="mt-5 flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {LESSONS.map((l) => {
           const ready = l.status === "ready";
           return (
