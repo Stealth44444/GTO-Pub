@@ -16,7 +16,10 @@ export type SpotEntry = {
   nodeCount: number;
 };
 
-const BASE = "/postflop";
+// 보드가 어디 있는가. 조합과 런아웃이 늘면 수백 MB라 저장소 대신 Supabase
+// Storage에 두고(scripts/upload-boards.ts), 그 공개 주소를 여기에 넣는다.
+// 비어 있으면 로컬 public/postflop에서 받는다.
+const BASE = process.env.NEXT_PUBLIC_POSTFLOP_BASE || "/postflop";
 
 let index: SpotEntry[] | null = null;
 let indexPending: Promise<SpotEntry[]> | null = null;
