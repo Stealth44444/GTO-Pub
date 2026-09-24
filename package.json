@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "icons": "node --experimental-strip-types scripts/build-icons.ts",
     "test": "node --experimental-strip-types scripts/run-tests.ts",
     "start": "next start",
     "lint": "eslint",

@@ -1,18 +1,24 @@
 {
   "name": "GTO 트레이너",
-  "short_name": "GTO 트레이너",
-  "description": "홀덤펍 유저를 위한 프리플랍 오픈/폴드 트레이너",
+  "short_name": "GTO",
+  "description": "홀덤펍 20bb 게임을 프리플랍부터 리버까지 한 판씩 쳐보며 배우는 트레이너",
+  "lang": "ko",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#07090b",
+  "theme_color": "#07090b",
   "orientation": "portrait",
+  "categories": ["education", "games"],
   "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

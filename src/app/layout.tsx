@@ -20,8 +20,17 @@ const mono = Spline_Sans_Mono({
 
 export const metadata: Metadata = {
   title: "GTO 트레이너",
-  description: "홀덤펍 유저를 위한 프리플랍 오픈/폴드 트레이너",
+  description: "홀덤펍 20bb 게임을 프리플랍부터 리버까지 한 판씩 쳐보며 배우는 트레이너",
   manifest: "/manifest.json",
+  // iOS는 매니페스트의 아이콘을 보지 않는다. 이걸 빼면 홈 화면에 화면을
+  // 축소한 스크린샷이 올라간다.
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

@@ -1,7 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <rect x="128" y="96" width="140" height="200" rx="16" fill="#f8fafc"/>
-  <rect x="244" y="216" width="140" height="200" rx="16" fill="#22c55e"/>
-  <text x="198" y="220" font-family="Arial, sans-serif" font-size="96" font-weight="700" fill="#0f172a" text-anchor="middle">A</text>
-  <text x="314" y="340" font-family="Arial, sans-serif" font-size="96" font-weight="700" fill="#f8fafc" text-anchor="middle">K</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="GTO 트레이너">
+  <!--
+    앱의 색 토큰과 같은 값을 쓴다 (globals.css). 아이콘만 다른 팔레트면
+    홈 화면에서 연 앱이 다른 앱처럼 보인다.
+
+    홈 화면에서는 48px로 줄어든다. 그 크기에서 살아남는 것은 형태 하나뿐이라
+    카드 한 장만 크게 두고, 뒤 카드는 민트색 그림자 역할만 한다.
+    마스크형으로도 쓰이므로 그림은 가운데 76% 안에 들어가 있다.
+  -->
+  <rect width="512" height="512" fill="#07090b"/>
+  <g transform="translate(256 256)">
+    <!-- 뒤 카드: 브랜드 색을 한 조각만 보이게 한다. -->
+    <g transform="rotate(-14)">
+      <rect x="-118" y="-150" width="236" height="300" rx="30" fill="#35a29f"/>
+    </g>
+    <!-- 앞 카드 -->
+    <g transform="rotate(6) translate(14 0)">
+      <rect x="-118" y="-150" width="236" height="300" rx="30" fill="#eef2f5"/>
+      <text x="-62" y="-62" font-family="Georgia, 'Times New Roman', serif" font-size="112" font-weight="700" fill="#071952" text-anchor="middle">A</text>
+      <g transform="translate(26 46) scale(0.92)">
+        <path
+          d="M0 -62 C22 -28 60 -12 60 16 C60 42 36 53 19 42 C13 38 9 34 7 29 C7 29 13 50 29 62 L-29 62 C-13 50 -7 29 -7 29 C-9 34 -13 38 -19 42 C-36 53 -60 42 -60 16 C-60 -12 -22 -28 0 -62 Z"
+          fill="#071952"
+        />
+      </g>
+    </g>
+  </g>
 </svg>
