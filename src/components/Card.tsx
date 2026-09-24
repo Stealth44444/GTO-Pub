@@ -20,11 +20,11 @@ const SYMBOL_COLOR: Record<Suit, string> = {
 };
 
 const SYMBOL_SIZE: Record<Suit, string> = {
-  s: "text-[54px] sm:text-[60px]",
-  h: "text-[54px] sm:text-[60px]",
-  c: "text-[54px] sm:text-[60px]",
+  s: "text-[48px] sm:text-[54px]",
+  h: "text-[48px] sm:text-[54px]",
+  c: "text-[48px] sm:text-[54px]",
   // ♦만 작다. 아래 주석 참고.
-  d: "text-[40px] sm:text-[45px]",
+  d: "text-[36px] sm:text-[40px]",
 };
 
 /**
@@ -61,9 +61,9 @@ export default function Card({
       // 회전 없이도 overflow-hidden + rounded corner에 걸쳐 잘리는 큰 심볼이 있으면
       // border가 모서리에서 1px 정도 깨져 보일 수 있어, border 대신 inset box-shadow로 테두리를 그림.
       style={style}
-      className={`relative h-14 w-10 flex-shrink-0 overflow-hidden rounded-[var(--gw-radius-card)] shadow-[var(--gw-card-shadow)] sm:h-16 sm:w-11 ${CARD_BG[suit]} ${className}`}
+      className={`relative h-[50px] w-9 flex-shrink-0 overflow-hidden rounded-[var(--gw-radius-card)] shadow-[var(--gw-card-shadow)] sm:h-[58px] sm:w-10 ${CARD_BG[suit]} ${className}`}
     >
-      <div className="absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2 text-[32px] font-black leading-none text-[var(--gw-text-primary)] sm:text-[38px]">
+      <div className="absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2 text-[29px] font-black leading-none text-[var(--gw-text-primary)] sm:text-[34px]">
         {rank === "T" ? "10" : rank}
       </div>
       <div
