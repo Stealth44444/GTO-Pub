@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import preflopData from "@/data/preflop-btn-bb.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
 import { makeDecision, type Decision } from "@/lib/decisions";
+import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
 import HandResult from "./HandResult";
@@ -309,10 +310,24 @@ export default function HandTrainer() {
     const turn = round.pre.turn;
     const labels = turn.actions.map((a) => actionLabelAt(PREFLOP, turn.node, a));
     const i = turn.actions.indexOf(action);
+    // 이 자리의 레인지 전체. 액션 순서와 레인지 순서가 같아야 색이 맞는다.
+    const ranges = turn.actions.map((a) => {
+      if (turn.node.kind === "btnOpen") return a === "open" ? PREFLOP.btn.open : null;
+      if (turn.node.kind === "bbDefend")
+        return a === "call" ? PREFLOP.bb.call : a === "shove" ? PREFLOP.bb.shove : null;
+      return a === "call" ? PREFLOP.btn.callVsShove : null;
+    });
+    const view = fromRanges(
+      PREFLOP.hands,
+      labels,
+      turn.actions.map((a) => (a === "open" ? "raise" : a)),
+      ranges,
+      round.pre.heroHand,
+    );
     // turn.evBb에는 null이 섞일 수 있다(레인지 밖 핸드의 콜). 그대로 넘긴다.
     setDecisions((prev) => [
       ...prev,
-      makeDecision("PREFLOP", labels, turn.evBb, i, [...turn.actions]),
+      makeDecision("PREFLOP", labels, turn.evBb, i, [...turn.actions], [], view),
     ]);
     setRound((cur) =>
       cur ? { ...cur, pre: applyPreflop(PREFLOP, cur.pre, action, Math.random) } : cur,
@@ -334,6 +349,12 @@ export default function HandTrainer() {
         index,
         node.actions.map((a) => a.kind),
         round.post!.board,
+        fromNode(
+          node,
+          round.spot!.handsByPlayer[round.deal!.heroPlayer],
+          labels,
+          round.deal!.hands[round.deal!.heroPlayer],
+        ),
       ),
     ]);
     const next = applyAction(round.spot, round.post, index);

@@ -6,6 +6,7 @@
 // 모양으로 쌓고, 끝날 때 한꺼번에 보여준다.
 
 import { gradeByEvLoss, isGradable, type Grade } from "./grading.ts";
+import type { RangeView } from "./rangeGrid.ts";
 
 export type DecisionRow = {
   label: string;
@@ -29,6 +30,8 @@ export type Decision = {
   rows: DecisionRow[];
   /** 그 시점의 보드. 프리플랍은 빈 배열. */
   board: string[];
+  /** 이 자리의 레인지 전체. 없으면 격자를 그리지 않는다. */
+  range?: RangeView;
 };
 
 /**
@@ -45,6 +48,7 @@ export function makeDecision(
   chosenIndex: number,
   kinds: string[] = [],
   board: string[] = [],
+  range?: RangeView,
 ): Decision {
   // 값이 없는 액션은 비교에서 빼야 한다. 0으로 채우면 안 된다 — BB에게 0 EV는
   // 폴드(-2bb)보다 훨씬 좋은 값이라, 값이 없다는 이유로 최선이 되어버린다.
@@ -66,6 +70,7 @@ export function makeDecision(
     grade: lossBb === null ? null : gradeByEvLoss(lossBb),
     rows: labels.map((label, i) => ({ label, evBb: evBb[i], lossBb: losses[i] })),
     board,
+    range,
   };
 }
 

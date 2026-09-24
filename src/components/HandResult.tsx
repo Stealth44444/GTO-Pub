@@ -3,6 +3,7 @@
 import { formatEv, formatEvLoss, gradeByEvLoss } from "@/lib/grading";
 import { scoreHand, type Decision } from "@/lib/decisions";
 import GradeIcon from "./GradeIcon";
+import RangeGrid from "./RangeGrid";
 
 /**
  * 한 판이 끝난 뒤의 결과. 판단이 한 번이든 네 번이든, 내가 끝냈든 상대가
@@ -101,6 +102,11 @@ export default function HandResult({
                 );
               })}
             </div>
+            {d.range && (
+              <div className="mt-3">
+                <RangeGrid view={d.range} />
+              </div>
+            )}
           </div>
         ))}
 
