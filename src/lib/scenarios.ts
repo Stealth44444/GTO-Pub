@@ -4,7 +4,7 @@ import { callEv, findCallSpot } from "./callspots";
 
 // 학습 카테고리는 "무엇을 배우나"이고, 인원·스택은 "어떤 조건에서"다.
 // 둘은 별개 축이라, 조합이 늘어나도 카테고리는 늘지 않는다.
-export type ModeId = "pushfold" | "vsshove" | "rfi" | "vsopen" | "postflop" | "icm";
+export type ModeId = "pushfold" | "vsshove" | "rfi" | "vsopen" | "hand" | "icm";
 
 export type ActionId = "shove" | "call" | "open" | "fold";
 
@@ -45,9 +45,9 @@ export const MODES: ModeInfo[] = [
     unavailableReason: "레인지 데이터 계산 전입니다",
   },
   {
-    id: "postflop",
-    title: "플랍 이후 판단",
-    summary: "보드가 깔린 뒤 벳·체크·폴드를 고릅니다.",
+    id: "hand",
+    title: "한 판 전체",
+    summary: "프리플랍부터 리버까지 한 판을 그대로 치고, 매 판단을 채점받습니다.",
     available: true,
   },
   {

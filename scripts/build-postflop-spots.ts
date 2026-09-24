@@ -9,7 +9,13 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { loadRanges } from "./preflop-ranges.ts";
 
-const EXPORTER = "tools/spot-exporter/target/release/spot-exporter.exe";
+const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter.exe";
+/**
+ * 전략에 깔 최소 빈도. 이게 있어야 레인지를 벗어난 핸드도 채점할 수 있다 —
+ * 도달확률이 0이면 솔버가 모든 액션의 EV를 0으로 돌려주고, 앱은 그걸 "손실 0"
+ * 으로 읽어 무엇을 해도 정답이 된다. 실제로 치는 보드에만 필요하다.
+ */
+const FLOOR = process.env.FLOOR ?? "0.005";
 const OUT_DIR = "public/postflop";
 const TAG = "srp-btn-bb-20bb";
 const RUNOUTS_PER_FLOP = 2;
@@ -194,6 +200,7 @@ FLOPS.forEach((flop, i) => {
       "--tag", TAG,
       "--pot", String(POT_CHIPS),
       "--stack", String(STACK_CHIPS),
+      "--floor", FLOOR,
       ...(ranges ? ["--oop-range", ranges.oop, "--ip-range", ranges.ip] : []),
     ],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },

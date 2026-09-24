@@ -54,14 +54,16 @@ const MODE_ICON: Record<ModeId, { tint: string; path: React.ReactNode }> = {
       </>
     ),
   },
-  // 플랍 = 보드에 깔린 카드 3장
-  postflop: {
+  // 한 판 전체 = 프리플랍에서 리버까지 이어지는 흐름
+  hand: {
     tint: "bg-[#f59e0b]",
     path: (
       <>
-        <rect x="2.5" y="7" width="5.5" height="11" rx="1.2" />
-        <rect x="9.25" y="5.5" width="5.5" height="11" rx="1.2" />
-        <rect x="16" y="7" width="5.5" height="11" rx="1.2" />
+        <path d="M3 18V9" />
+        <path d="M9 18V6" />
+        <path d="M15 18v-9" />
+        <path d="M21 18V4" />
+        <path d="M2 21h20" />
       </>
     ),
   },

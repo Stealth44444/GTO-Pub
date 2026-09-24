@@ -6,7 +6,7 @@ import BottomNav, { type TabId } from "./BottomNav";
 import HistoryPanel from "./HistoryPanel";
 import Menu from "./Menu";
 import StatsPanel from "./StatsPanel";
-import PostflopTrainer from "./PostflopTrainer";
+import HandTrainer from "./HandTrainer";
 import type { Scenario } from "@/lib/scenarios";
 
 // 핸드 셔플이 클라이언트 랜덤에 의존하므로 SSR을 끄고 클라이언트에서만 렌더링합니다.
@@ -34,8 +34,8 @@ export default function TrainerClient() {
       <main className="relative min-h-0 flex-1 h-full">
         {tab === "train" &&
           (scenario ? (
-            scenario.mode === "postflop" ? (
-              <PostflopTrainer key="postflop" />
+            scenario.mode === "hand" ? (
+              <HandTrainer key="hand" />
             ) : (
               <Trainer
                 key={`${scenario.mode}-${scenario.tableSize}-${scenario.stackBb}`}
