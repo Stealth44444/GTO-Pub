@@ -2,6 +2,7 @@
 
 import { formatEvLoss } from "@/lib/grading";
 import { scoreHand, type Decision } from "@/lib/decisions";
+import { textureTags } from "@/lib/texture";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
@@ -85,6 +86,7 @@ export default function HandResult({
                 {d.lossBb === null ? "채점 불가" : d.lossBb === 0 ? "BEST" : formatEvLoss(d.lossBb)}
               </span>
             </div>
+            {d.board.length >= 3 && <BoardTags board={d.board} />}
             <DecisionRows rows={d.rows} chosen={d.chosen} />
             {d.jam && (
               <WhyJam
@@ -149,6 +151,31 @@ function RangeMixBar({ rows }: { rows: { label: string; pct: number }[] }) {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 이 보드를 뭐라고 부르는가.
+ *
+ * 보드는 22100가지라 하나씩 외울 수 없다. 종류를 알면 처음 보는 보드에서도
+ * 어디쯤인지 짐작할 수 있고, 바로 아래 막대가 그 종류에서 무엇을 하는지
+ * 보여준다. 둘을 붙여 놓아야 이름이 지식이 된다.
+ */
+function BoardTags({ board }: { board: string[] }) {
+  const tags = textureTags(board);
+  if (tags.length === 0) return null;
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5">
+      {tags.map((t) => (
+        <span
+          key={t.label}
+          title={t.hint}
+          className="gw-label-ko rounded-[4px] border border-[var(--gw-border)] px-1.5 py-0.5 text-[10px] text-[var(--gw-text-muted)]"
+        >
+          {t.label}
+        </span>
+      ))}
     </div>
   );
 }
