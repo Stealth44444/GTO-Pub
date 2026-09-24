@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { GRADE_ORDER, gradeByEvLoss, gradeInfo } from "@/lib/grading";
-import { summarize } from "@/lib/stats";
+import { ACTION_KO, leaksByAction, leaksByStreet, summarize, type Leak } from "@/lib/stats";
 import GradeIcon from "./GradeIcon";
 import { PanelMessage, PanelScroll, spotLabel } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
@@ -23,10 +23,50 @@ function Counter({ label, value, tone }: { label: string; value: string; tone?: 
   );
 }
 
+function LeakList({ title, items }: { title: string; items: Leak[] }) {
+  const max = Math.max(...items.map((i) => i.lostBb), 0.01);
+  return (
+    <div className="mt-3">
+      <span className="gw-label">{title}</span>
+      <div className="mt-1.5 flex flex-col gap-1">
+        {items.map((leak) => (
+          <div
+            key={leak.label}
+            className="flex items-center gap-2.5 rounded-[var(--gw-radius-control)] bg-[var(--gw-table-header)] px-2.5 py-2"
+          >
+            <span className="w-24 shrink-0 truncate text-[12px] font-semibold text-[var(--gw-text-primary)]">
+              {leak.label}
+            </span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--gw-surface-3)]">
+              <div
+                className="h-full rounded-full bg-[var(--gw-danger)]"
+                style={{ width: `${(leak.lostBb / max) * 100}%` }}
+              />
+            </div>
+            <span className="gw-num w-10 shrink-0 text-right text-[11px] text-[var(--gw-text-muted)]">
+              {leak.count}번
+            </span>
+            <span className="gw-num w-14 shrink-0 text-right text-[12px] font-semibold text-[var(--gw-danger)]">
+              -{leak.lostBb.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function StatsPanel() {
   const state = useAttempts();
   const summary = useMemo(
     () => (state.status === "ready" ? summarize(state.attempts) : null),
+    [state],
+  );
+  const leaks = useMemo(
+    () =>
+      state.status === "ready"
+        ? { street: leaksByStreet(state.attempts), action: leaksByAction(state.attempts) }
+        : null,
     [state],
   );
 
@@ -107,6 +147,18 @@ export default function StatsPanel() {
         })}
       </section>
 
+      {leaks && (leaks.street.length > 0 || leaks.action.length > 0) && (
+        <section className="mt-5">
+          <h2 className="gw-label-ko">어디서 새고 있나</h2>
+          <p className="mt-1 text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
+            총 손실로 줄을 세웠습니다. 평균이 큰 쪽은 아프지만 드물 수 있고, 고쳐서
+            돌아오는 양은 결국 총합입니다.
+          </p>
+          {leaks.street.length > 0 && <LeakList title="스트릿" items={leaks.street} />}
+          {leaks.action.length > 0 && <LeakList title="상황별" items={leaks.action.slice(0, 6)} />}
+        </section>
+      )}
+
       {summary.worst.length > 0 && (
         <section className="mt-5">
           <h2 className="text-xs font-bold tracking-wide text-[var(--gw-text-muted)]">
@@ -123,7 +175,7 @@ export default function StatsPanel() {
                   <GradeIcon id={grade.id} color={grade.color} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-bold text-[var(--gw-text-primary)]">
-                      {a.handCode} · {a.userAction === "fold" ? "폴드" : "올인"}
+                      {a.handCode} · {ACTION_KO[a.userAction] ?? a.userAction}
                     </span>
                     <span className="block truncate text-[11px] text-[var(--gw-text-muted)]">
                       {spotLabel(a)}

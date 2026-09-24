@@ -16,6 +16,8 @@ export type Attempt = {
   correctAction: string;
   evLossBb: number;
   createdAt: string;
+  /** preflop / flop / turn / river. 옛 푸시·폴드 기록에는 없다. */
+  street: string | null;
 };
 
 type Row = {
@@ -27,6 +29,7 @@ type Row = {
   hand_code: string;
   user_action: string;
   correct_action: string;
+  street?: string | null;
   ev_loss_bb: number | string;
   created_at: string;
 };
@@ -44,6 +47,7 @@ function toAttempt(r: Row): Attempt {
     handCode: r.hand_code,
     userAction: r.user_action,
     correctAction: r.correct_action,
+    street: r.street ?? null,
     evLossBb: num(r.ev_loss_bb) ?? 0,
     createdAt: r.created_at,
   };
@@ -58,7 +62,7 @@ export async function fetchAttempts(userId: string): Promise<Attempt[] | null> {
   const { data, error } = await supabase
     .from("training_attempts")
     .select(
-      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, ev_loss_bb, created_at",
+      "mode, table_size, stack_bb, position, shover_position, hand_code, user_action, correct_action, street, ev_loss_bb, created_at",
     )
     .eq("user_id", userId)
     .not("ev_loss_bb", "is", null)
@@ -117,4 +121,82 @@ export function summarize(attempts: Attempt[]): Summary {
     byGrade,
     worst: worst.filter((a) => a.evLossBb > 0),
   };
+}
+
+/** 액션 종류를 사람이 읽는 말로. 기록에는 종류만 남는다. */
+export const ACTION_KO: Record<string, string> = {
+  fold: "폴드",
+  check: "체크",
+  call: "콜",
+  bet: "벳",
+  raise: "레이즈",
+  open: "오픈",
+  allin: "올인",
+  shove: "올인",
+};
+
+const STREET_KO: Record<string, string> = {
+  preflop: "프리플랍",
+  flop: "플랍",
+  turn: "턴",
+  river: "리버",
+};
+
+export type Leak = {
+  label: string;
+  count: number;
+  /** 이 묶음에서 잃은 총 bb. */
+  lostBb: number;
+  /** 한 번당 평균 손실. 횟수가 적은 묶음이 위로 올라오지 않게 함께 본다. */
+  avgLossBb: number;
+};
+
+/**
+ * 어디서 새고 있는지.
+ *
+ * 총 손실로 줄을 세운다. 평균 손실이 큰 묶음은 아프지만 드물 수 있고, 고쳐서
+ * 돌아오는 양은 결국 총합이다. 손실이 0인 묶음은 새는 곳이 아니므로 뺀다.
+ */
+export function findLeaks(
+  attempts: Attempt[],
+  keyOf: (a: Attempt) => string | null,
+  minCount = 2,
+): Leak[] {
+  const groups = new Map<string, { count: number; lost: number }>();
+  for (const a of attempts) {
+    const key = keyOf(a);
+    if (key === null) continue;
+    const g = groups.get(key) ?? { count: 0, lost: 0 };
+    g.count += 1;
+    g.lost += a.evLossBb;
+    groups.set(key, g);
+  }
+  return [...groups.entries()]
+    .filter(([, g]) => g.count >= minCount && g.lost > 0.005)
+    .map(([label, g]) => ({
+      label,
+      count: g.count,
+      lostBb: Number(g.lost.toFixed(2)),
+      avgLossBb: Number((g.lost / g.count).toFixed(3)),
+    }))
+    .sort((x, y) => y.lostBb - x.lostBb);
+}
+
+/** 스트릿별 누수. 어느 구간이 약한지 가장 먼저 봐야 할 값이다. */
+export function leaksByStreet(attempts: Attempt[]): Leak[] {
+  return findLeaks(attempts, (a) => (a.street ? (STREET_KO[a.street] ?? a.street) : null), 1);
+}
+
+/** "리버에서 콜" 같은 묶음. 무엇을 고쳐야 하는지까지 좁혀 준다. */
+export function leaksByAction(attempts: Attempt[]): Leak[] {
+  return findLeaks(attempts, (a) => {
+    const street = a.street ? (STREET_KO[a.street] ?? a.street) : null;
+    const action = ACTION_KO[a.userAction] ?? a.userAction;
+    return street ? `${street} · ${action}` : action;
+  });
+}
+
+/** 자리별 누수. 같은 실수도 자리에 따라 값이 다르다. */
+export function leaksByPosition(attempts: Attempt[]): Leak[] {
+  return findLeaks(attempts, (a) => a.position, 1);
 }
