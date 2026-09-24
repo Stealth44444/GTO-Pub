@@ -64,6 +64,7 @@ export default function PokerTable({
   hand,
   heroCards,
   board,
+  boardDealFrom = 0,
   potBbOverride,
   sprBb,
   dealKey,
@@ -87,6 +88,13 @@ export default function PokerTable({
   hand: HandInfo;
   heroCards?: [string, string];
   board?: string[];
+  /**
+   * 보드에서 이번에 새로 놓이는 카드가 몇 번째부터인가.
+   *
+   * 플랍은 0(세 장이 차례로), 턴은 3, 리버는 4다. 이걸 안 받고 절대 위치로
+   * 지연을 주면 리버 한 장이 제 순서를 기다리느라 0.4초 늦게 놓인다.
+   */
+  boardDealFrom?: number;
   potBbOverride?: number;
   /**
    * 플랍 시작 시점의 SPR(남은 유효스택 ÷ 팟). 20bb 게임에서 플랍 이후를
@@ -218,6 +226,8 @@ export default function PokerTable({
     [tableSize, anteBb, script, acted],
   );
   const potBb = potBbOverride ?? potFromScript(tableSize, anteBb, script, acted);
+
+
   // 플랍이 깔리면 프리플랍 칩은 팟으로 쓸려 들어간다. 그대로 두면 이미 팟에
   // 더해진 돈이 자리 앞에도 남아 두 번 세는 것처럼 보인다.
   const chipsSwept = Boolean(board?.length);
@@ -253,8 +263,10 @@ export default function PokerTable({
                   key={`${card.rank}${card.suit}-${index}`}
                   rank={card.rank}
                   suit={card.suit}
-                  className="animate-[gw-card-deal_420ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
-                  style={{ animationDelay: `${index * 100}ms` }}
+                  className="animate-[gw-card-deal_380ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
+                  // 이번에 새로 나온 카드들만 차례로 놓인다. 턴 한 장이
+                  // 네 번째라는 이유로 300ms를 기다리면 안 된다.
+                  style={{ animationDelay: `${Math.max(0, index - boardDealFrom) * 170}ms` }}
                 />
               ))}
             </div>

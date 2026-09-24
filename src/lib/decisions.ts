@@ -100,8 +100,10 @@ export type HandScore = {
   /**
    * 핸드 전체 등급. 합계가 아니라 가장 나빴던 판단으로 정한다 — 한 번 크게
    * 틀리면 나머지를 잘 쳐도 그 핸드를 잘 친 것이 아니다.
+   *
+   * 채점한 판단이 하나도 없으면 null이다. 등급이 없는 것과 좋은 등급은 다르다.
    */
-  grade: Grade;
+  grade: Grade | null;
 };
 
 export function scoreHand(decisions: Decision[]): HandScore {
@@ -111,6 +113,10 @@ export function scoreHand(decisions: Decision[]): HandScore {
     gradedCount: graded.length,
     ungradedCount: decisions.length - graded.length,
     totalLossBb,
-    grade: gradeByEvLoss(graded.length > 0 ? Math.max(...graded.map((d) => d.lossBb)) : 0),
+    // 채점한 판단이 하나도 없으면 등급도 없다. 손실 0으로 계산하면 "최선"이
+    // 뜨는데, 레인지 밖으로 나가 아무것도 비교하지 못한 판이 완벽한 판으로
+    // 보이게 된다. 학습 도구가 할 수 있는 가장 나쁜 거짓말이다.
+    grade:
+      graded.length > 0 ? gradeByEvLoss(Math.max(...graded.map((d) => d.lossBb))) : null,
   };
 }

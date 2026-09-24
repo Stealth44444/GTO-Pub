@@ -81,7 +81,15 @@ expect(score.gradedCount, 2, "채점된 판단 수");
 expect(score.ungradedCount, 1, "채점 못 한 판단 수");
 expect(score.totalLossBb, 0.2, "손실 합계는 채점된 것만");
 // 0.2bb는 inaccuracy 구간(0.25bb 이하)이다.
-expect(score.grade.id, "inaccuracy", "가장 나빴던 판단(0.2bb)으로 등급을 정한다");
+expect(score.grade?.id, "inaccuracy", "가장 나빴던 판단(0.2bb)으로 등급을 정한다");
+
+console.log("채점한 판단이 하나도 없으면 등급이 없다");
+// 손실 0으로 계산하면 "최선"이 뜬다. 레인지 밖으로 나가 아무것도 비교하지
+// 못한 판이 완벽한 판으로 보이는 셈이라, 등급 자체가 없어야 한다.
+const allDead = scoreHand([dead, dead]);
+expect(allDead.grade, null, "채점된 게 없으면 등급도 없다");
+expect(allDead.gradedCount, 0, "채점된 판단 0개");
+expect(allDead.ungradedCount, 2, "전부 채점 불가");
 
 console.log("값이 없는 액션은 0으로 취급하면 안 된다");
 // BB가 레인지 밖 핸드로 마주하는 상황: 폴드 -2, 콜은 값 없음, 올인 -2.65.

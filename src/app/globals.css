@@ -299,14 +299,23 @@ body {
   }
 }
 
+/*
+ * 보드에 카드가 놓이는 동작.
+ *
+ * 전에는 16px만 올라와서 "생겨났다"로 읽혔다. 딜러가 던진 카드는 옆에서
+ * 들어와 자리에 내려앉는다. 거리를 늘리고 각도를 줘서 그 방향을 만든다.
+ */
 @keyframes gw-card-deal {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.88) rotate(5deg);
+    transform: translate(-34px, -22px) scale(0.82) rotate(-14deg);
+  }
+  60% {
+    opacity: 1;
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1) rotate(0);
+    transform: translate(0, 0) scale(1) rotate(0);
   }
 }
 

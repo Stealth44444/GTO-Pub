@@ -41,17 +41,26 @@ export default function HandResult({
     >
       <div className="mx-auto flex max-w-sm flex-col">
         <div className="flex items-center justify-center gap-2">
-          <GradeIcon id={score.grade.id} color={score.grade.color} className="h-7 w-7" />
-          <span
-            className="text-[26px] font-bold leading-none tracking-[-0.02em]"
-            style={{ color: score.grade.color }}
-          >
-            {score.grade.label}
-          </span>
+          {score.grade ? (
+            <>
+              <GradeIcon id={score.grade.id} color={score.grade.color} className="h-7 w-7" />
+              <span
+                className="text-[26px] font-bold leading-none tracking-[-0.02em]"
+                style={{ color: score.grade.color }}
+              >
+                {score.grade.label}
+              </span>
+            </>
+          ) : (
+            <span className="text-[20px] font-bold leading-none text-[var(--gw-text-muted)]">
+              채점 불가
+            </span>
+          )}
         </div>
         <p className="gw-num mt-1.5 text-center text-[11px] text-[var(--gw-text-muted)]">
-          판단 {decisions.length}번 ·{" "}
-          {score.totalLossBb === 0 ? "손실 없음" : formatEvLoss(score.totalLossBb)}
+          판단 {decisions.length}번
+          {score.gradedCount > 0 &&
+            ` · ${score.totalLossBb === 0 ? "손실 없음" : formatEvLoss(score.totalLossBb)}`}
           {score.ungradedCount > 0 && ` · ${score.ungradedCount}번 채점 불가`}
         </p>
         <p className="mt-1 text-center text-[11px] text-[var(--gw-text-muted)]">{note}</p>

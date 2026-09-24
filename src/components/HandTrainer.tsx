@@ -38,6 +38,29 @@ import PokerTable from "./PokerTable";
 
 const SEATS_DATA = seatsRaw as unknown as SeatsData;
 const TABLE_SIZE = SEATS_DATA.tableSize;
+
+/**
+ * 액션 버튼 한 줄의 높이 + 아래 여백.
+ *
+ * 버튼이 py-4(32px)에 15px 글자 한 줄(약 22px)이라 54px, 여기에 pb-4(16px).
+ * 버튼이 사라져도 이만큼은 비워 둬야 위의 테이블이 안 움직인다.
+ */
+const ACTION_BAR_MIN_H = "70px";
+
+/**
+ * 프리플랍이 닫히고 플랍이 나오기까지의 사이.
+ *
+ * 칩이 팟으로 쓸려 들어가는 데 460ms가 걸린다. 그게 끝나기도 전에 카드가
+ * 놓이면 두 가지가 겹쳐서, 플랍이 어디선가 튀어나온 것처럼 보인다. 딜러도
+ * 팟을 정리하고 한 박자 쉰 다음에 깐다.
+ *
+ * 보드를 받아오는 시간과 무관하게 일정해야 한다 — 받아오는 시간은 판마다
+ * 다르고, 그러면 리듬이 판마다 달라진다.
+ */
+const FLOP_BEAT_MS = 620;
+
+/** 각 스트릿에서 이미 깔려 있던 카드 수. 새 카드는 여기서부터 놓인다. */
+const DEAL_FROM: Record<string, number> = { flop: 0, turn: 3, river: 4 };
 const SEATS = seatNames(TABLE_SIZE);
 const tableHand = ALL_HANDS[0];
 
@@ -132,6 +155,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     decisions: [],
   });
   const [recapOpen, setRecapOpen] = useState(false);
+  /** 플랍을 깔아도 되는가. 팟이 정리되고 한 박자 쉰 뒤에 참이 된다. */
+  const [flopReady, setFlopReady] = useState(false);
   const timers = useRef<number[]>([]);
   const loggedRef = useRef<number | null>(null);
 
@@ -143,6 +168,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const newRound = useCallback(() => {
     clearTimers();
     setRecapOpen(false);
+    setFlopReady(false);
     setDecisions([]);
     setEnding(null);
     setPhase("preflop");
@@ -307,12 +333,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           spot.handsByPlayer[0].indexOf(hands[0]),
           spot.handsByPlayer[1].indexOf(hands[1]),
         ];
-        if (handIdx[0] < 0 || handIdx[1] < 0) {
-          // 솔버가 이 자리에서 이 핸드를 들고 플랍에 오지 않는다.
-          setEnding("솔버의 레인지 밖이라 플랍부터는 비교할 정답이 없습니다");
+        // 상대 핸드가 레인지 밖이면 상대를 움직일 방법이 없다. 이건 드물고,
+        // 이때만 판을 접는다.
+        if (handIdx[1 - heroPlayer] < 0) {
+          setEnding("상대 핸드가 솔버 레인지 밖이라 이 보드를 칠 수 없었습니다");
           setPhase("over");
           return;
         }
+        // 내 핸드가 레인지 밖인 것은 접을 이유가 아니다. 앞에서 레인지 밖
+        // 판단을 한 결과이고 — 96o로 콜한 판이 그렇다 — 그 결과를 끝까지
+        // 쳐보는 것이 학습이다. 채점만 못 한다.
         setRound((cur) =>
           cur
             ? {
@@ -339,6 +369,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;
+  /** 레인지 밖 핸드로 플랍에 왔는가. 치기는 하되 채점은 못 한다. */
+  const heroOutOfRange = Boolean(
+    round?.deal && round.deal.handIdx[round.deal.heroPlayer] < 0,
+  );
   useEffect(() => {
     if (phase !== "postflop" || !round?.post?.node || !round.spot || postHeroTurn || ending) return;
     const t = window.setTimeout(() => {
@@ -356,6 +390,14 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     timers.current.push(t);
     return () => window.clearTimeout(t);
   }, [phase, round, postHeroTurn, ending]);
+
+  // 팟이 정리되고 한 박자 뒤에 보드를 연다.
+  useEffect(() => {
+    if (phase !== "postflop" || flopReady) return;
+    const t = window.setTimeout(() => setFlopReady(true), FLOP_BEAT_MS);
+    timers.current.push(t);
+    return () => window.clearTimeout(t);
+  }, [phase, flopReady]);
 
   // 칩이 팟으로 들어가는 동안만 자리 앞에 남겨 둔다.
   useEffect(() => {
@@ -480,7 +522,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const choosePostflop = (index: number) => {
     if (!round?.post?.node || !round.spot || !round.deal || !postHeroTurn || ending) return;
     const node = round.post.node;
-    const ev = actionEvFor(node, round.deal.handIdx[round.deal.heroPlayer]);
+    const heroIdx = round.deal.handIdx[round.deal.heroPlayer];
+    // 레인지 밖이면 비교할 값이 없다. 0으로 채우면 아무거나 최선이 된다.
+    const ev: (number | null)[] =
+      heroIdx < 0 ? node.actions.map(() => null) : actionEvFor(node, heroIdx);
     const labels = node.actions.map(actionLabel);
     // 이 라인까지 온 내 레인지가 여기서 무엇을 하는가.
     const mix = rangeMix(node, reachWeights(round.spot, node.line, node.player), labels);
@@ -495,7 +540,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         node,
         round.spot.handsByPlayer[round.deal.heroPlayer],
         labels,
-        round.deal.hands[round.deal.heroPlayer],
+        // 레인지 밖 핸드는 격자에 칸이 없다. 표시할 자리를 찾지 못한다.
+        heroIdx < 0 ? null : round.deal.hands[round.deal.heroPlayer],
       ),
       node.line,
     );
@@ -570,7 +616,15 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !ending)}
             hand={tableHand}
             heroCards={heroCards}
-            board={round.allinBoard ?? (phase === "postflop" ? round.post?.board : undefined)}
+            board={
+              round.allinBoard ??
+              (phase === "postflop" && flopReady ? round.post?.board : undefined)
+            }
+            // 스트릿이 곧 "몇 장이 이미 있었나"다. 올인 런아웃은 다섯 장을
+            // 한꺼번에 까므로 처음부터 차례로 놓는다.
+            boardDealFrom={
+              round.allinBoard ? 0 : DEAL_FROM[round.post?.street ?? "flop"]
+            }
             potBbOverride={
               view
                 ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2))
@@ -594,59 +648,68 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         </div>
       </div>
 
-      {!ending && round.game.turn && phase === "preflop" && (
-        <div
-          className="grid gap-2.5 px-4 pb-4"
-          style={{
-            gridTemplateColumns: `repeat(${round.game.turn.actions.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {round.game.turn.actions.map((action) => (
-            <button
-              key={action}
-              type="button"
-              disabled={!preTurnReady}
-              onClick={() => choosePreflop(action)}
-              className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
-                action === "fold"
-                  ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
-                  : action === "call"
-                    ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
-                    : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
-              }`}
-            >
-              {labelFor(SEATS_DATA, action)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!ending && phase === "postflop" && round.post?.node && (
-        <div
-          className="grid gap-2.5 px-4 pb-4"
-          style={{ gridTemplateColumns: `repeat(${round.post.node.actions.length}, minmax(0, 1fr))` }}
-        >
-          {round.post.node.actions.map((action, index) => (
-            <button
-              key={`${action.kind}-${action.amountBb}`}
-              type="button"
-              disabled={!postHeroTurn}
-              onClick={() => choosePostflop(index)}
-              className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
-                action.kind === "fold"
-                  ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
-                  : action.kind === "call"
-                    ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
-                    : action.kind === "check"
-                      ? "bg-[var(--gw-surface-3)] text-[var(--gw-text-primary)]"
+      {/*
+        액션 영역은 버튼이 없어도 자리를 지킨다. 조건부로 통째로 빼면 위의
+        테이블이 그만큼 늘어났다 줄었다 하고, 카드와 칩이 판마다 다른 자리에
+        있게 된다. 고르는 순간 화면이 움직이면 고른 것이 맞는지도 헷갈린다.
+      */}
+      <div className="px-4 pb-4" style={{ minHeight: ACTION_BAR_MIN_H }}>
+        {!ending && round.game.turn && phase === "preflop" && (
+          <div
+            className="grid gap-2.5"
+            style={{
+              gridTemplateColumns: `repeat(${round.game.turn.actions.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {round.game.turn.actions.map((action) => (
+              <button
+                key={action}
+                type="button"
+                disabled={!preTurnReady}
+                onClick={() => choosePreflop(action)}
+                className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
+                  action === "fold"
+                    ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
+                    : action === "call"
+                      ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
                       : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
-              }`}
-            >
-              {actionLabel(action)}
-            </button>
-          ))}
-        </div>
-      )}
+                }`}
+              >
+                {labelFor(SEATS_DATA, action)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!ending && phase === "postflop" && round.post?.node && (
+          <div
+            className="grid gap-2.5"
+            style={{
+              gridTemplateColumns: `repeat(${round.post.node.actions.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {round.post.node.actions.map((action, index) => (
+              <button
+                key={`${action.kind}-${action.amountBb}`}
+                type="button"
+                disabled={!postHeroTurn}
+                onClick={() => choosePostflop(index)}
+                className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
+                  action.kind === "fold"
+                    ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
+                    : action.kind === "call"
+                      ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
+                      : action.kind === "check"
+                        ? "bg-[var(--gw-surface-3)] text-[var(--gw-text-primary)]"
+                        : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
+                }`}
+              >
+                {actionLabel(action)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {(ending || phase === "over") && (
         <HandResult
@@ -655,7 +718,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           note={ending ?? "핸드 종료"}
           caveat={
             phase === "postflop" && villainSeat
-              ? boardCaveat(round.boardFit, round.game.outcome, heroSeat, villainSeat)
+              ? heroOutOfRange
+                ? `${round.hands[round.heroSeat]}로 여기까지 온 것은 솔버 레인지 밖입니다. 솔버가 이 패를 들고 이 자리에 오지 않으니 비교할 값이 없어 채점하지 못합니다 — 판은 끝까지 쳐보실 수 있습니다.`
+                : boardCaveat(round.boardFit, round.game.outcome, heroSeat, villainSeat)
               : undefined
           }
           showdown={
