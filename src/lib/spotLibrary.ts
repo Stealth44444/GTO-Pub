@@ -20,6 +20,57 @@ const BASE = "/postflop";
 
 let index: SpotEntry[] | null = null;
 let indexPending: Promise<SpotEntry[]> | null = null;
+
+/**
+ * 오프너 자리 구간별 보드. 있으면 자리에 맞는 걸 쓰고, 없으면 기본 목록으로
+ * 떨어진다 — 그건 BTN 오픈-BB 콜 조건이라 다른 자리 조합에는 근사다.
+ */
+let buckets: Record<string, SpotEntry[]> | null = null;
+let bucketPending: Promise<Record<string, SpotEntry[]>> | null = null;
+
+/** 어느 자리가 어느 구간인가. 오픈 레인지 폭이 비슷한 자리끼리 묶는다. */
+const BUCKET_OF: Record<string, string> = {
+  UTG: "early",
+  UTG1: "early",
+  UTG2: "early",
+  LJ: "middle",
+  HJ: "middle",
+  CO: "late",
+  BTN: "late",
+  SB: "sb",
+};
+
+export function bucketForOpener(seat: string): string | null {
+  return BUCKET_OF[seat] ?? null;
+}
+
+function loadBuckets(): Promise<Record<string, SpotEntry[]>> {
+  if (buckets) return Promise.resolve(buckets);
+  bucketPending ??= fetch(`${BASE}/index-buckets.json`)
+    .then((res) => (res.ok ? (res.json() as Promise<{ buckets: Record<string, SpotEntry[]> }>) : null))
+    .then((raw) => {
+      buckets = raw?.buckets ?? {};
+      return buckets;
+    })
+    .catch(() => {
+      // 아직 만들어지지 않았다. 기본 목록으로 간다.
+      buckets = {};
+      return buckets;
+    });
+  return bucketPending;
+}
+
+/**
+ * 이 오프너 자리에 맞는 보드 목록. 구간 데이터가 없으면 null을 돌려주고,
+ * 부르는 쪽이 기본 목록을 쓴다.
+ */
+export async function spotsForOpener(seat: string): Promise<SpotEntry[] | null> {
+  const name = bucketForOpener(seat);
+  if (!name) return null;
+  const all = await loadBuckets();
+  const list = all[name];
+  return list && list.length > 0 ? list : null;
+}
 const cache = new Map<string, SolvedSpot>();
 const inFlight = new Map<string, Promise<SolvedSpot>>();
 

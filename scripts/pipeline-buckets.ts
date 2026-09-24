@@ -15,9 +15,13 @@
 //
 // 사람이 지켜보지 않아도 끝까지 가도록 만들었다. 진행 상황은
 // scripts/data/pipeline-status.json 에 남는다.
+//
+// 중간에 끊겨도 다시 돌리면 이어서 한다. 한 구간이 20분 넘게 걸려서, 처음부터
+// 다시 하면 재개가 사실상 불가능하다. 이미 나온 플랍 파일은 건너뛴다 — 끊길 때
+// 쓰다 만 파일은 JSON이 깨져 있으므로, 읽어보고 깨졌으면 지우고 다시 계산한다.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter.exe";
 const SEATS_FILE = "src/data/preflop-seats.json";
@@ -112,6 +116,18 @@ function rangeString(freq: Record<string, number>, hands: string[]): string {
     .join(",");
 }
 
+/** 이미 계산된 플랍인가. 쓰다 만 파일은 지워서 다시 계산하게 한다. */
+function done(file: string): boolean {
+  if (!existsSync(file)) return false;
+  try {
+    JSON.parse(readFileSync(file, "utf8"));
+    return true;
+  } catch {
+    rmSync(file, { force: true });
+    return false;
+  }
+}
+
 function setStatus(step: string, detail?: string) {
   const at = new Date().toISOString();
   mkdirSync("scripts/data", { recursive: true });
@@ -146,7 +162,13 @@ for (const bucket of BUCKETS) {
   const oop = rangeString(callRange, seatsData.hands);
 
   const started = Date.now();
+  let reused = 0;
   sample.forEach((s, i) => {
+    const out = `${dir}/ev-${s.flop}.json`;
+    if (done(out)) {
+      reused += 1;
+      return;
+    }
     execFileSync(
       EXPORTER,
       [
@@ -176,7 +198,10 @@ for (const bucket of BUCKETS) {
     ["--experimental-strip-types", "scripts/build-preflop-values.ts"],
     { stdio: "inherit", env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: `src/data/flopev-${bucket.name}.json` } },
   );
-  setStatus(`${bucket.name} 완료`, `${((Date.now() - started) / 60000).toFixed(1)}분`);
+  setStatus(
+    `${bucket.name} 완료`,
+    `${((Date.now() - started) / 60000).toFixed(1)}분${reused ? ` · ${reused}개 재사용` : ""}`,
+  );
 }
 
 setStatus("자리별 프리플랍 재솔브");

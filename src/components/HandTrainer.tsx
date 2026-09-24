@@ -25,6 +25,7 @@ import {
   loadSpotIndex,
   pickSpotEntry,
   prefetchSpot,
+  spotsForOpener,
   type SpotEntry,
 } from "@/lib/spotLibrary";
 import { ensureGuestUser, logHand } from "@/lib/attempts";
@@ -66,6 +67,8 @@ type Round = {
   allinBoard: string[] | null;
   allinCards: { hero: [string, string]; villain: [string, string] } | null;
   entry: SpotEntry | null;
+  /** 오프너 자리에 맞는 보드를 썼는가. 아니면 채점이 근사다. */
+  matchedBucket: boolean;
   spot: SolvedSpot | null;
   post: HandState | null;
   deal: Deal | null;
@@ -99,6 +102,7 @@ function freshRound(fixedSeat?: string | null): Round {
     allinBoard: null,
     allinCards: null,
     entry: null,
+    matchedBucket: false,
     spot: null,
     post: null,
     deal: null,
@@ -228,9 +232,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
     if (!entries || !villainSeat) return;
     let alive = true;
-    const entry = pickSpotEntry(entries, Math.random, round.entry?.file);
-    loadSpot(entry)
-      .then((spot) => {
+    const openerSeat = outcome.opener;
+    // 오프너 자리에 맞는 보드가 있으면 그걸 쓴다. 없으면 기본 목록으로 떨어지고,
+    // 그건 BTN-BB 조건이라 다른 자리 조합에는 근사다.
+    void spotsForOpener(openerSeat)
+      .then((list) => {
+        const pool = list ?? entries;
+        const entry = pickSpotEntry(pool, Math.random, round.entry?.file);
+        return loadSpot(entry).then((spot) => ({ spot, entry, pool, matched: Boolean(list) }));
+      })
+      .then(({ spot, entry, pool, matched }) => {
         if (!alive) return;
         const board = new Set(spot.flop);
         // 플랍부터는 SB 쪽에 가까운 자리가 먼저 친다. 그쪽이 OOP다.
@@ -263,11 +274,18 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         }
         setRound((cur) =>
           cur
-            ? { ...cur, entry, spot, post: startHand(spot), deal: { heroPlayer, hands, handIdx } }
+            ? {
+                ...cur,
+                entry,
+                matchedBucket: matched,
+                spot,
+                post: startHand(spot),
+                deal: { heroPlayer, hands, handIdx },
+              }
             : cur,
         );
         setPhase("postflop");
-        prefetchSpot(pickSpotEntry(entries, Math.random, entry.file));
+        prefetchSpot(pickSpotEntry(pool, Math.random, entry.file));
       })
       .catch(() => {
         setEnding("보드를 불러오지 못했습니다");
@@ -578,12 +596,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           decisions={decisions}
           note={ending ?? "핸드 종료"}
           caveat={
-            // 포스트플랍 데이터는 BTN이 열고 BB가 받은 조건 하나뿐이다. 다른
-            // 자리 조합이 플랍에 가면 레인지가 달라 채점이 정확하지 않다.
-            phase === "postflop" &&
-            villainSeat &&
-            !((heroSeat === "BTN" && villainSeat === "BB") ||
-              (heroSeat === "BB" && villainSeat === "BTN"))
+            // 오프너 자리에 맞는 보드를 못 썼다면 레인지가 달라 채점이 근사다.
+            phase === "postflop" && villainSeat && !round.matchedBucket
               ? `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`
               : undefined
           }

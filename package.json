@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --experimental-strip-types scripts/run-tests.ts",
     "start": "next start",
     "lint": "eslint",
     "solver:test": "node --experimental-strip-types scripts/evaluator.test.ts",
@@ -19,7 +20,8 @@
     "view:test": "node --experimental-strip-types scripts/tableView.test.ts",
     "preflop:seats": "node --experimental-strip-types scripts/solve-preflop-seats.ts",
     "seatgame:test": "node --experimental-strip-types scripts/seatGame.test.ts",
-    "buckets": "node --experimental-strip-types scripts/pipeline-buckets.ts"
+    "buckets": "node --experimental-strip-types scripts/pipeline-buckets.ts",
+    "boards": "node --experimental-strip-types scripts/pipeline-boards.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

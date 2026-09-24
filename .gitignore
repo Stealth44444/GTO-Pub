@@ -48,3 +48,6 @@ tools/spot-exporter/target-dev/
 scripts/data/flopev/
 scripts/data/flopev-*/
 scripts/data/pipeline-status.json
+
+# 파이프라인 재개용 곁기록
+public/postflop/*/.done/
