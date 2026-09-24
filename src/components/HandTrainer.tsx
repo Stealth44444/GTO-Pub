@@ -5,6 +5,8 @@ import seatsRaw from "@/data/preflop-seats.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
 import { makeDecision, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
+import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
+import RunRecap from "./RunRecap";
 import { rangeMix, reachWeights } from "@/lib/rangeMix";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
@@ -124,6 +126,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [ending, setEnding] = useState<string | null>(null);
   const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 이번에 앉아서 친 몫. 몇 판마다 멈춰서 보여준다. */
+  const [run, setRun] = useState<{ hands: number; decisions: RunDecision[] }>({
+    hands: 0,
+    decisions: [],
+  });
+  const [recapOpen, setRecapOpen] = useState(false);
   const timers = useRef<number[]>([]);
   const loggedRef = useRef<number | null>(null);
 
@@ -134,6 +142,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
   const newRound = useCallback(() => {
     clearTimers();
+    setRecapOpen(false);
     setDecisions([]);
     setEnding(null);
     setPhase("preflop");
@@ -141,6 +150,26 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     loggedRef.current = null;
     setRound(freshRound(seat));
   }, [clearTimers, seat]);
+
+  /**
+   * 이 판을 접고 다음으로. 세션 집계는 여기서 한다 — 이펙트 안에서 상태를
+   * 바꾸면 렌더가 한 번 더 돌고, 린트도 막는다.
+   */
+  const finishHand = useCallback(() => {
+    if (!round) {
+      newRound();
+      return;
+    }
+    const rows = toRunDecisions(decisions, round.heroSeat, round.hands[round.heroSeat]);
+    const hands = run.hands + 1;
+    setRun({ hands, decisions: [...run.decisions, ...rows] });
+    // 몇 판마다 멈춘다. 멈춘 자리에서 다음 핸드로 가는 버튼은 회고 안에 있다.
+    if (hands % RECAP_EVERY === 0) {
+      setRecapOpen(true);
+      return;
+    }
+    newRound();
+  }, [round, decisions, run, newRound]);
 
   useEffect(() => {
     loadSpotIndex()
@@ -657,8 +686,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
               </div>
             ) : undefined
           }
-          onNext={newRound}
+          onNext={finishHand}
         />
+      )}
+
+      {recapOpen && (
+        <RunRecap summary={summarizeRun(run.hands, run.decisions)} onContinue={newRound} />
       )}
     </div>
   );
