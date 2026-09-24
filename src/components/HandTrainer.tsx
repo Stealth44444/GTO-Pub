@@ -1,26 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import preflopData from "@/data/preflop-btn-bb.json";
+import seatsRaw from "@/data/preflop-seats.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
 import { makeDecision, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
-import { dealCombo as pickCombo } from "@/lib/preflopGame";
+import { dealCombo } from "@/lib/preflopGame";
 import { dealRunout } from "@/lib/runout";
-import HandResult from "./HandResult";
 import { applyAction, startHand, type HandState } from "@/lib/hand";
 import { sampleActionIndex, type Deal } from "@/lib/postflopSpot";
 import { ALL_HANDS, seatNames } from "@/lib/poker";
 import {
-  actionLabelAt,
-  dealCombo,
-  type PreflopAction,
-  type PreflopData,
-  type PreflopSeat,
-} from "@/lib/preflopGame";
-import { applyPreflop, startPreflop, type PreflopState } from "@/lib/handFlow";
+  applyHeroAction,
+  labelFor,
+  startGame,
+  type GameState,
+  type SeatAction,
+  type SeatsData,
+} from "@/lib/seatGame";
 import {
   loadSpot,
   loadSpotIndex,
@@ -28,27 +27,44 @@ import {
   prefetchSpot,
   type SpotEntry,
 } from "@/lib/spotLibrary";
-import { DEFAULT_SCENARIO } from "@/lib/scenarios";
 import { ensureGuestUser, logHand } from "@/lib/attempts";
 import { currentUserId } from "@/lib/session";
+import HandResult from "./HandResult";
 import PokerTable from "./PokerTable";
 
-const PREFLOP = preflopData as unknown as PreflopData;
+const SEATS_DATA = seatsRaw as unknown as SeatsData;
+const TABLE_SIZE = SEATS_DATA.tableSize;
+const SEATS = seatNames(TABLE_SIZE);
 const tableHand = ALL_HANDS[0];
 
 /** 한 스텝이 화면에 나타나고 다음으로 넘어가기까지. 폴드는 실제로도 빠르다. */
 const STEP_MS = 620;
 const FOLD_STEP_MS = 320;
 
+/**
+ * 플랍부터의 액션 순서. 프리플랍은 UTG부터지만 플랍부터는 SB부터다.
+ * 이 순서에서 앞선 쪽이 OOP(먼저 치는 쪽)다.
+ */
+const POSTFLOP_ORDER = [
+  ...SEATS.slice(TABLE_SIZE - 2), // SB, BB
+  ...SEATS.slice(0, TABLE_SIZE - 2),
+];
+const actsFirst = (a: string, b: string) =>
+  POSTFLOP_ORDER.indexOf(a) < POSTFLOP_ORDER.indexOf(b) ? a : b;
+
 type Phase = "preflop" | "postflop" | "over";
 
 type Round = {
   id: number;
-  /** 프리플랍 올인이 콜됐을 때 깔아 준 보드. 그 외에는 null. */
+  heroSeat: string;
+  /** 자리별 핸드 코드. 히어로 것 말고는 화면에 안 보인다. */
+  hands: Record<string, string>;
+  /** 실제로 쥔 두 장. 판 시작 때 정해 끝까지 들고 간다. */
+  heroCombo: [string, string];
+  game: GameState;
+  /** 프리플랍 올인이 콜됐을 때 깔아 준 보드. */
   allinBoard: string[] | null;
   allinCards: { hero: [string, string]; villain: [string, string] } | null;
-  heroSeat: PreflopSeat;
-  pre: PreflopState;
   entry: SpotEntry | null;
   spot: SolvedSpot | null;
   post: HandState | null;
@@ -66,17 +82,19 @@ function dealHandCode(rnd: () => number): string {
   return ALL_HANDS[0].code;
 }
 
-/** 새 판의 초기 상태. 마운트 이펙트에서 setState를 부르지 않으려고 분리했다. */
 function freshRound(): Round {
-  const heroSeat: PreflopSeat = Math.random() < 0.5 ? "BTN" : "BB";
-  const heroHand = dealHandCode(Math.random);
-  const villainHand = dealHandCode(Math.random);
+  const heroSeat = SEATS[Math.floor(Math.random() * SEATS.length)];
+  const hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
+  // 히어로가 실제로 쥔 두 장. 이걸 안 정하면 테이블이 더미 핸드를 그린다.
+  const heroCombo = dealCombo(hands[heroSeat], new Set(), Math.random) ?? ["Ah", "Ad"];
   return {
     id: Date.now() + Math.floor(Math.random() * 1000),
+    heroSeat,
+    hands,
+    heroCombo,
+    game: startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random),
     allinBoard: null,
     allinCards: null,
-    heroSeat,
-    pre: startPreflop(PREFLOP, heroSeat, heroHand, villainHand, Math.random),
     entry: null,
     spot: null,
     post: null,
@@ -91,17 +109,10 @@ export default function HandTrainer() {
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [ending, setEnding] = useState<string | null>(null);
-  /**
-   * 어느 베팅 라운드를 이미 팟으로 쓸어 담았는지. 불리언으로 두면 라운드가
-   * 바뀔 때 되돌릴 이펙트가 필요하지만, 키로 두면 저절로 초기화된다.
-   */
   const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
-  /** 이미 기록을 남긴 판의 id. 한 판에 한 번만 쓴다. */
   const loggedRef = useRef<number | null>(null);
-
-  const tableSize = DEFAULT_SCENARIO.tableSize;
 
   const clearTimers = useCallback(() => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -112,9 +123,9 @@ export default function HandTrainer() {
     clearTimers();
     setDecisions([]);
     setEnding(null);
-    loggedRef.current = null;
     setPhase("preflop");
     setRevealed(0);
+    loggedRef.current = null;
     setRound(freshRound());
   }, [clearTimers]);
 
@@ -132,50 +143,75 @@ export default function HandTrainer() {
 
   // 아직 안 보여준 스텝이 있으면 한 박자씩 넘긴다.
   useEffect(() => {
-    if (!round || revealed >= round.pre.steps.length) return;
-    const step = round.pre.steps[revealed];
+    if (!round || revealed >= round.game.steps.length) return;
+    const step = round.game.steps[revealed];
     const wait = step.kind === "fold" ? FOLD_STEP_MS : STEP_MS;
     const t = window.setTimeout(() => setRevealed((n) => n + 1), wait);
     timers.current.push(t);
     return () => window.clearTimeout(t);
   }, [round, revealed]);
 
-  const allRevealed = round ? revealed >= round.pre.steps.length : false;
-  const outcome = round?.pre.outcome ?? null;
+  const allRevealed = round ? revealed >= round.game.steps.length : false;
+  const outcome = round?.game.outcome ?? null;
 
-  // 프리플랍이 끝나고 모든 액션을 다 보여줬으면 결과를 확정한다.
+  // 플랍에 가면 상대는 하나로 정해진다. 그 전에는 아직 모른다.
+  const villainSeat =
+    outcome?.kind === "flop"
+      ? outcome.opener === round?.heroSeat
+        ? outcome.caller
+        : outcome.opener
+      : outcome?.kind === "allin"
+        ? outcome.a === round?.heroSeat
+          ? outcome.b
+          : outcome.a
+        : null;
+
+  const heroSeat = round?.heroSeat ?? SEATS[0];
+
+  // 좌석 액션·칩·팟은 한 곳에서 뽑는다. 따로 계산하면 서로 어긋난다.
+  const view =
+    phase === "postflop" && round?.post && round.spot && round.deal && villainSeat
+      ? buildTableView(
+          round.post,
+          round.spot.startingPotBb,
+          heroSeat,
+          villainSeat,
+          round.deal.heroPlayer,
+        )
+      : null;
+  const roundKey = view && round ? `${round.id}-${view.frontBb}-${round.post?.street}` : null;
+  const swept = Boolean(view?.closed) && sweptKey === roundKey;
+  const chipsShown = Boolean(view) && !swept && (view?.frontBb ?? 0) > 0;
+
+  // 프리플랍이 끝나고 모든 액션을 다 보여줬으면 다음으로 넘긴다.
   useEffect(() => {
     if (!round || !allRevealed || !outcome || phase !== "preflop") return;
+
     if (outcome.kind !== "flop") {
       // 히어로가 한 번도 고르지 못한 판은 보여줄 것이 없다. 바로 다시 돌린다.
-      // (BB로 앉았는데 BTN이 접는 경우가 이렇다.)
       if (decisions.length === 0) {
         const t = window.setTimeout(newRound, 700);
         timers.current.push(t);
         return () => window.clearTimeout(t);
       }
 
-      // 올인이 콜됐으면 보드를 끝까지 깔아 승패를 보여준다. 판돈을 다 넣고
-      // 결과를 못 보면 게임이 아니다.
+      // 올인이 콜됐으면 보드를 끝까지 깔아 승패를 보여준다.
       let board: string[] | null = null;
       let cards: Round["allinCards"] = null;
-      if (outcome.kind === "allin") {
-        const hero = pickCombo(round.pre.heroHand, new Set(), Math.random);
-        const villain = hero
-          ? pickCombo(round.pre.villainHand, new Set(hero), Math.random)
-          : null;
-        if (hero && villain) {
-          cards = { hero, villain };
-          board = dealRunout([...hero, ...villain], Math.random);
+      if (outcome.kind === "allin" && villainSeat) {
+        const villain = dealCombo(round.hands[villainSeat], new Set(round.heroCombo), Math.random);
+        if (villain) {
+          cards = { hero: round.heroCombo, villain };
+          board = dealRunout([...round.heroCombo, ...villain], Math.random);
         }
       }
 
       const note =
         outcome.kind === "allin"
-          ? "프리플랍 올인으로 끝났습니다"
-          : outcome.by === round.heroSeat
-            ? "내가 접어 핸드가 끝났습니다"
-            : "상대가 접어 핸드가 끝났습니다";
+          ? "올인 대결로 끝났습니다"
+          : outcome.winner === round.heroSeat
+            ? "다들 접어서 내가 가져갑니다"
+            : `${outcome.winner}가 가져갑니다`;
       const t = window.setTimeout(() => {
         if (board && cards) {
           setRound((cur) => (cur ? { ...cur, allinBoard: board, allinCards: cards } : cur));
@@ -186,19 +222,23 @@ export default function HandTrainer() {
       timers.current.push(t);
       return () => window.clearTimeout(t);
     }
-    if (!entries) return;
+
+    if (!entries || !villainSeat) return;
     let alive = true;
     const entry = pickSpotEntry(entries, Math.random, round.entry?.file);
     loadSpot(entry)
       .then((spot) => {
         if (!alive) return;
-        // 프리플랍에서 쥔 핸드를 그대로 들고 플랍에 간다. 보드와 겹치지 않는
-        // 조합을 골라야 하고, 스팟의 레인지에 실제로 있는 조합이어야 한다.
         const board = new Set(spot.flop);
-        const heroPlayer: 0 | 1 = round.heroSeat === "BB" ? 0 : 1;
-        const heroCombo = dealCombo(round.pre.heroHand, board, Math.random);
+        // 플랍부터는 SB 쪽에 가까운 자리가 먼저 친다. 그쪽이 OOP다.
+        const oopSeat = actsFirst(round.heroSeat, villainSeat);
+        const heroPlayer: 0 | 1 = oopSeat === round.heroSeat ? 0 : 1;
+
+        // 처음 받은 두 장을 그대로 들고 간다. 보드와 겹칠 때만 다시 뽑는다.
+        const kept = round.heroCombo.every((c) => !board.has(c)) ? round.heroCombo : null;
+        const heroCombo = kept ?? dealCombo(round.hands[round.heroSeat], board, Math.random);
         const blocked = new Set([...board, ...(heroCombo ?? [])]);
-        const villainCombo = dealCombo(round.pre.villainHand, blocked, Math.random);
+        const villainCombo = dealCombo(round.hands[villainSeat], blocked, Math.random);
         if (!heroCombo || !villainCombo) {
           setEnding("이 보드와 카드가 겹쳐 플랍을 깔 수 없었습니다");
           setPhase("over");
@@ -213,13 +253,8 @@ export default function HandTrainer() {
           spot.handsByPlayer[1].indexOf(hands[1]),
         ];
         if (handIdx[0] < 0 || handIdx[1] < 0) {
-          // 솔버가 이 자리에서 이 핸드를 들고 플랍에 오지 않는다. 그래서 플랍
-          // 데이터가 없다. 그냥 끝내면 왜 끝났는지 알 수 없으므로 이유를 남긴다.
-          setEnding(
-            handIdx[0] < 0 && round.heroSeat === "BB"
-              ? "솔버는 이 핸드로 콜하지 않아, 플랍부터는 비교할 정답이 없습니다"
-              : "이 보드에서는 그 핸드의 플랍 데이터가 없습니다",
-          );
+          // 솔버가 이 자리에서 이 핸드를 들고 플랍에 오지 않는다.
+          setEnding("솔버의 레인지 밖이라 플랍부터는 비교할 정답이 없습니다");
           setPhase("over");
           return;
         }
@@ -231,34 +266,17 @@ export default function HandTrainer() {
         setPhase("postflop");
         prefetchSpot(pickSpotEntry(entries, Math.random, entry.file));
       })
-      .catch(() => setPhase("over"));
+      .catch(() => {
+        setEnding("보드를 불러오지 못했습니다");
+        setPhase("over");
+      });
     return () => {
       alive = false;
     };
-  }, [round, allRevealed, outcome, phase, entries, decisions.length, newRound]);
+  }, [round, allRevealed, outcome, phase, entries, villainSeat, decisions.length, newRound]);
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;
-
-  const heroSeat: PreflopSeat = round?.heroSeat ?? "BTN";
-  const villainSeat = heroSeat === "BTN" ? "BB" : "BTN";
-
-  // 좌석 액션·칩·팟은 한 곳에서 뽑는다. 따로 계산하면 서로 어긋난다 —
-  // 실제로 팟이 음수로 내려간 적이 있다.
-  const view =
-    phase === "postflop" && round?.post && round.spot && round.deal
-      ? buildTableView(
-          round.post,
-          round.spot.startingPotBb,
-          heroSeat,
-          villainSeat,
-          round.deal.heroPlayer,
-        )
-      : null;
-  // 베팅이 맞으면 칩이 가운데로 날아가고, 460ms 뒤 팟에 합쳐진다.
-  const roundKey = view && round ? `${round.id}-${view.frontBb}-${round.post?.street}` : null;
-  const swept = Boolean(view?.closed) && sweptKey === roundKey;
-  const chipsShown = Boolean(view) && !swept && (view?.frontBb ?? 0) > 0;
   useEffect(() => {
     if (phase !== "postflop" || !round?.post?.node || !round.spot || postHeroTurn || ending) return;
     const t = window.setTimeout(() => {
@@ -286,15 +304,11 @@ export default function HandTrainer() {
   }, [view?.closed, roundKey, sweptKey]);
 
   /**
-   * 리버까지 갔으면 누가 이겼는지. 상태가 아니라 파생값이다 — 보드와 두 핸드가
-   * 정해지면 결과도 정해진다.
-   *
-   * 결과는 참고일 뿐 채점 근거가 아니다. 좋은 판단이 지는 일은 늘 있고,
-   * 결과로 판단을 평가하기 시작하면 배우는 게 반대로 뒤집힌다.
+   * 리버까지 갔으면 누가 이겼는지. 상태가 아니라 파생값이다.
+   * 결과는 참고일 뿐 채점 근거가 아니다 — 좋은 판단이 지는 일은 늘 있다.
    */
   const showdown: Showdown | null = useMemo(() => {
     if (!ending || !round) return null;
-    // 프리플랍 올인으로 끝난 판은 여기서 깐 보드로 판정한다.
     if (round.allinBoard && round.allinCards) {
       return judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
     }
@@ -309,13 +323,7 @@ export default function HandTrainer() {
     );
   }, [ending, round]);
 
-  /**
-   * 판이 끝나면 그 판의 판단을 한 번에 남긴다.
-   *
-   * 판단마다 바로 쓰지 않는 이유: 중간에 앱을 닫으면 반쯤 기록된 판이 남고,
-   * 나중에 누수를 뽑을 때 "이 판에서 무슨 일이 있었나"를 온전히 볼 수 없다.
-   * loggedRef로 한 판에 한 번만 쓴다 — 결과 화면이 여러 번 렌더돼도 상관없게.
-   */
+  // 판이 끝나면 그 판의 판단을 한 번에 남긴다.
   useEffect(() => {
     if ((!ending && phase !== "over") || !round || decisions.length === 0) return;
     if (loggedRef.current === round.id) return;
@@ -326,11 +334,11 @@ export default function HandTrainer() {
       logHand({
         userId,
         mode: "hand",
-        tableSize,
-        stackBb: PREFLOP.stackBb,
-        anteBb: PREFLOP.anteBb,
+        tableSize: TABLE_SIZE,
+        stackBb: SEATS_DATA.stackBb,
+        anteBb: SEATS_DATA.anteBb,
         position: round.heroSeat,
-        handCode: round.pre.heroHand,
+        handCode: round.hands[round.heroSeat],
         decisions: decisions.map((d) => ({
           street: d.street,
           userAction: d.chosenKind,
@@ -340,34 +348,54 @@ export default function HandTrainer() {
         })),
       }),
     );
-  }, [ending, phase, round, decisions, tableSize]);
+  }, [ending, phase, round, decisions]);
 
-  const choosePreflop = (action: PreflopAction) => {
-    if (!round?.pre.turn || ending || !allRevealed) return;
-    const turn = round.pre.turn;
-    const labels = turn.actions.map((a) => actionLabelAt(PREFLOP, turn.node, a));
+  const choosePreflop = (action: SeatAction) => {
+    if (!round?.game.turn || ending || !allRevealed) return;
+    const turn = round.game.turn;
+    const labels = turn.actions.map((a) => labelFor(SEATS_DATA, a));
     const i = turn.actions.indexOf(action);
-    // 이 자리의 레인지 전체. 액션 순서와 레인지 순서가 같아야 색이 맞는다.
+
+    // 이 상황의 레인지 전체. 액션 순서와 레인지 순서가 같아야 색이 맞는다.
+    const me = SEATS_DATA.seats[round.heroSeat];
+    const stage = turn.stage;
     const ranges = turn.actions.map((a) => {
-      if (turn.node.kind === "btnOpen") return a === "open" ? PREFLOP.btn.open : null;
-      if (turn.node.kind === "bbDefend")
-        return a === "call" ? PREFLOP.bb.call : a === "shove" ? PREFLOP.bb.shove : null;
-      return a === "call" ? PREFLOP.btn.callVsShove : null;
+      if (stage.kind === "firstIn") {
+        return a === "open" ? (me?.open ?? null) : a === "jam" ? (me?.openJam ?? null) : null;
+      }
+      if (stage.kind === "vsOpen") {
+        const opener = SEATS_DATA.seats[stage.opener];
+        if (a === "call") return opener?.vsOpenCall?.[round.heroSeat] ?? null;
+        if (a === "jam") return opener?.vsOpenJam?.[round.heroSeat] ?? null;
+        return null;
+      }
+      if (a !== "call") return null;
+      return stage.iOpened
+        ? (me?.callJam?.[stage.jammer] ?? null)
+        : (SEATS_DATA.seats[stage.jammer]?.vsJamCall?.[round.heroSeat] ?? null);
     });
     const view = fromRanges(
-      PREFLOP.hands,
+      SEATS_DATA.hands,
       labels,
-      turn.actions.map((a) => (a === "open" ? "raise" : a)),
+      turn.actions.map((a) => (a === "open" ? "raise" : a === "jam" ? "allin" : a)),
       ranges,
-      round.pre.heroHand,
+      round.hands[round.heroSeat],
     );
-    // turn.evBb에는 null이 섞일 수 있다(레인지 밖 핸드의 콜). 그대로 넘긴다.
+
     setDecisions((prev) => [
       ...prev,
-      makeDecision("PREFLOP", labels, turn.evBb, i, [...turn.actions], [], view),
+      makeDecision(
+        "PREFLOP",
+        labels,
+        turn.evBb,
+        i,
+        turn.actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a)),
+        [],
+        view,
+      ),
     ]);
     setRound((cur) =>
-      cur ? { ...cur, pre: applyPreflop(PREFLOP, cur.pre, action, Math.random) } : cur,
+      cur ? { ...cur, game: applyHeroAction(SEATS_DATA, cur.game, action, Math.random) } : cur,
     );
   };
 
@@ -376,7 +404,6 @@ export default function HandTrainer() {
     const node = round.post.node;
     const ev = actionEvFor(node, round.deal.handIdx[round.deal.heroPlayer]);
     const labels = node.actions.map(actionLabel);
-    // 핸드를 끝내는 액션이든 아니든 똑같이 채점해서 쌓는다.
     setDecisions((prev) => [
       ...prev,
       makeDecision(
@@ -411,68 +438,69 @@ export default function HandTrainer() {
   if (!round) {
     return (
       <div className="flex h-full items-center justify-center px-8">
-        <p className="animate-[gw-thinking_1200ms_ease-in-out_infinite] text-xs font-bold tracking-widest text-[var(--gw-text-muted)]">
-          준비 중…
-        </p>
+        <p className="animate-[gw-thinking_1200ms_ease-in-out_infinite] gw-label">준비 중</p>
       </div>
     );
   }
 
-  const foldedSeats = seatNames(tableSize).filter((x) => x !== heroSeat && x !== villainSeat);
-  const preTurnReady = Boolean(round.pre.turn && allRevealed && !ending);
+  const preTurnReady = Boolean(round.game.turn && allRevealed && !ending);
   const street =
     phase === "postflop" && round.post ? round.post.street.toUpperCase() : "PREFLOP";
+  // 플랍 전에는 상대가 정해지지 않았으므로, 살아 있을 수 있는 자리를 접지 않는다.
+  const foldedSeats =
+    villainSeat && phase === "postflop"
+      ? SEATS.filter((x) => x !== heroSeat && x !== villainSeat)
+      : [];
 
-  // 프리플랍에서는 테이블이 우리가 재생하는 스텝을 따라가고,
-  // 플랍부터는 포스트플랍 상태가 액션 순서를 정한다.
   const postActionSeat = round.post?.node
     ? round.post.node.player === round.deal?.heroPlayer
       ? heroSeat
-      : villainSeat
+      : (villainSeat ?? heroSeat)
     : null;
 
-  const heroCards: [string, string] | undefined = round.allinCards
-    ? round.allinCards.hero
-    : phase === "postflop" && round.deal
+  const heroCards: [string, string] =
+    phase === "postflop" && round.deal
       ? [
           round.deal.hands[round.deal.heroPlayer].slice(0, 2),
           round.deal.hands[round.deal.heroPlayer].slice(2, 4),
         ]
-      : undefined;
+      : round.heroCombo;
 
   return (
     <div
       className="relative flex h-full min-h-0 flex-col select-none overflow-hidden"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <header className="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between bg-[var(--gw-bg)]/90 px-3 backdrop-blur-sm">
-        <div className="text-[10px] font-bold tracking-wide text-[var(--gw-text-muted)]">
-          {street} · {heroSeat} · {round.pre.heroHand}
+      <header className="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between bg-[var(--gw-bg)]/90 px-4 backdrop-blur-sm">
+        <div className="gw-num text-[11px] font-semibold text-[var(--gw-text-secondary)]">
+          {street} · {heroSeat} · {round.hands[heroSeat]}
         </div>
-        <div className="text-[10px] font-bold text-[var(--gw-accent)]">
-          {PREFLOP.stackBb}bb · 앤티 {PREFLOP.anteBb}
+        <div className="gw-num text-[11px] text-[var(--gw-text-muted)]">
+          {SEATS_DATA.stackBb}bb · 앤티 {SEATS_DATA.anteBb}
         </div>
       </header>
 
       <div className="relative min-h-0 flex-1">
         <div className="absolute inset-x-0 bottom-0 top-12">
           <PokerTable
-            tableSize={tableSize}
+            tableSize={TABLE_SIZE}
             heroPosition={heroSeat}
-            stackBb={PREFLOP.stackBb}
-            anteBb={PREFLOP.anteBb}
+            stackBb={SEATS_DATA.stackBb}
+            anteBb={SEATS_DATA.anteBb}
             shoverPosition={null}
             awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !ending)}
             hand={tableHand}
             heroCards={heroCards}
             board={round.allinBoard ?? (phase === "postflop" ? round.post?.board : undefined)}
             potBbOverride={
-              view ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2)) : undefined
+              view
+                ? Number((view.totalPotBb - (chipsShown ? view.frontBb : 0)).toFixed(2))
+                : undefined
             }
             dealKey={String(round.id)}
             actionSeat={phase === "postflop" ? postActionSeat : undefined}
             foldedSeats={foldedSeats}
-            preflopScript={round.pre.steps}
+            preflopScript={round.game.steps}
             revealedSteps={phase === "postflop" ? undefined : revealed}
             seatActions={view?.actions}
             seatChips={view ? (chipsShown ? view.chips : {}) : undefined}
@@ -481,36 +509,36 @@ export default function HandTrainer() {
         </div>
       </div>
 
-      {/* 프리플랍 선택지 */}
-      {!ending && round.pre.turn && phase === "preflop" && (
+      {!ending && round.game.turn && phase === "preflop" && (
         <div
-          className="grid gap-3 px-4 pb-4"
-          style={{ gridTemplateColumns: `repeat(${round.pre.turn.actions.length}, minmax(0, 1fr))` }}
+          className="grid gap-2.5 px-4 pb-4"
+          style={{
+            gridTemplateColumns: `repeat(${round.game.turn.actions.length}, minmax(0, 1fr))`,
+          }}
         >
-          {round.pre.turn.actions.map((action) => (
+          {round.game.turn.actions.map((action) => (
             <button
               key={action}
               type="button"
               disabled={!preTurnReady}
               onClick={() => choosePreflop(action)}
-              className={`rounded-[var(--gw-radius-control)] py-4 text-base font-bold transition active:scale-95 disabled:cursor-wait disabled:opacity-40 sm:text-lg ${
+              className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
                 action === "fold"
                   ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
                   : action === "call"
-                    ? "bg-[var(--gw-accent)] text-[var(--gw-bg)]"
+                    ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
                     : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
               }`}
             >
-              {actionLabelAt(PREFLOP, round.pre.turn!.node, action)}
+              {labelFor(SEATS_DATA, action)}
             </button>
           ))}
         </div>
       )}
 
-      {/* 포스트플랍 선택지 */}
       {!ending && phase === "postflop" && round.post?.node && (
         <div
-          className="grid gap-3 px-4 pb-4"
+          className="grid gap-2.5 px-4 pb-4"
           style={{ gridTemplateColumns: `repeat(${round.post.node.actions.length}, minmax(0, 1fr))` }}
         >
           {round.post.node.actions.map((action, index) => (
@@ -519,11 +547,11 @@ export default function HandTrainer() {
               type="button"
               disabled={!postHeroTurn}
               onClick={() => choosePostflop(index)}
-              className={`rounded-[var(--gw-radius-control)] py-4 text-base font-bold transition active:scale-95 disabled:cursor-wait disabled:opacity-40 sm:text-lg ${
+              className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
                 action.kind === "fold"
                   ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
                   : action.kind === "call"
-                    ? "bg-[var(--gw-accent)] text-[var(--gw-bg)]"
+                    ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
                     : action.kind === "check"
                       ? "bg-[var(--gw-surface-3)] text-[var(--gw-text-primary)]"
                       : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
@@ -538,26 +566,19 @@ export default function HandTrainer() {
       {(ending || phase === "over") && (
         <HandResult
           decisions={decisions}
-          note={
-            ending ??
-            (outcome?.kind === "folded"
-              ? `${outcome.by}가 접어 핸드가 끝났습니다`
-              : outcome?.kind === "allin"
-                ? "프리플랍 올인으로 끝났습니다"
-                : "핸드 종료")
-          }
+          note={ending ?? "핸드 종료"}
           showdown={
-            showdown ? (
+            showdown && villainSeat ? (
               <div className="mt-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-table-header)] px-3.5 py-3">
                 <div className="flex items-center justify-between">
                   <span className="gw-label">
                     {showdown.winner === "hero" ? "WIN" : showdown.winner === "tie" ? "SPLIT" : "LOSE"}
                   </span>
-                  <span className="gw-num text-[11px] text-[var(--gw-text-muted)]">쇼다운</span>
+                  <span className="gw-label">쇼다운</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[13px]">
                   <span className="text-[var(--gw-text-secondary)]">
-                    나 · {round.pre.heroHand}
+                    나 · {heroSeat} · {round.hands[heroSeat]}
                   </span>
                   <span className="font-semibold text-[var(--gw-text-primary)]">
                     {showdown.heroHandName}
@@ -565,7 +586,7 @@ export default function HandTrainer() {
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[13px]">
                   <span className="text-[var(--gw-text-muted)]">
-                    상대 · {round.pre.villainHand}
+                    상대 · {villainSeat} · {round.hands[villainSeat]}
                   </span>
                   <span className="font-semibold text-[var(--gw-text-secondary)]">
                     {showdown.villainHandName}
@@ -577,7 +598,6 @@ export default function HandTrainer() {
           onNext={newRound}
         />
       )}
-
     </div>
   );
 }

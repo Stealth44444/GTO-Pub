@@ -19,7 +19,7 @@
 // 20bb에서 3벳은 사실상 올인이라 4벳은 넣지 않았다. 첫 콜러가 나오면 그 뒤는
 // 접는 것으로 본다 — 멀티웨이 팟의 포스트플랍 데이터가 없어서이고, 단순화다.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const OUT = "src/data/preflop-seats.json";
 
@@ -33,19 +33,67 @@ type FlopValues = {
 const eq = JSON.parse(readFileSync("scripts/data/equity.json", "utf8")) as EquityTable;
 const flopRaw = JSON.parse(readFileSync("src/data/preflop-flopev.json", "utf8")) as FlopValues;
 
+/**
+ * 자리마다 오픈 레인지가 다르니 플랍에서의 값도 달라야 한다. 이른 자리의 좁은
+ * 오픈은 상대의 디펜스도 좁게 만들고, 그러면 플랍에서 가져가는 몫이 달라진다.
+ *
+ * 구간별 파일이 있으면 그걸 쓰고, 없으면 기본값(BTN-BB 조건)으로 떨어진다.
+ * 기본값만 쓰면 이른 자리 오픈이 과대평가돼 UTG 오픈이 28%까지 넓어진다.
+ */
+const BUCKET_OF: Record<string, string> = {
+  UTG: "early",
+  UTG1: "early",
+  UTG2: "early",
+  LJ: "middle",
+  HJ: "middle",
+  CO: "late",
+  BTN: "late",
+  SB: "sb",
+};
+
+function loadBucket(name: string): FlopValues | null {
+  const path = `src/data/flopev-${name}.json`;
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as FlopValues;
+}
+
 const HANDS = eq.hands;
 const N = HANDS.length;
 const EQ = eq.equity;
 const COMBOS = HANDS.map((c) => (c.length === 2 ? 6 : c.endsWith("s") ? 4 : 12));
 
-const flopIndex = new Map(flopRaw.hands.map((h, i) => [h, i]));
-const FLOP_EV: [number[], number[]] = [[], []];
-for (const p of [0, 1] as const) {
-  for (const code of HANDS) {
-    const i = flopIndex.get(code);
-    FLOP_EV[p].push(i === undefined ? Number.NaN : (flopRaw.flopEvBb[p][i] ?? Number.NaN));
+function toTable(src: FlopValues): [number[], number[]] {
+  const idx = new Map(src.hands.map((h, i) => [h, i]));
+  const out: [number[], number[]] = [[], []];
+  for (const p of [0, 1] as const) {
+    for (const code of HANDS) {
+      const i = idx.get(code);
+      out[p].push(i === undefined ? Number.NaN : (src.flopEvBb[p][i] ?? Number.NaN));
+    }
   }
+  return out;
 }
+
+const DEFAULT_EV = toTable(flopRaw);
+const BUCKET_EV: Record<string, [number[], number[]]> = {};
+for (const name of new Set(Object.values(BUCKET_OF))) {
+  const loaded = loadBucket(name);
+  if (loaded) BUCKET_EV[name] = toTable(loaded);
+}
+const usedBuckets = Object.keys(BUCKET_EV);
+console.log(
+  usedBuckets.length > 0
+    ? `구간별 플랍 EV 사용: ${usedBuckets.join(", ")}`
+    : "구간별 플랍 EV 없음 — BTN-BB 근사로 전부 계산합니다",
+);
+
+/** 이 자리가 쓸 플랍 EV 표. */
+function evTableFor(seat: string): [number[], number[]] {
+  return BUCKET_EV[BUCKET_OF[seat] ?? ""] ?? DEFAULT_EV;
+}
+
+// solveSeat 안에서 자리에 맞는 표로 바꿔 쓴다.
+let FLOP_EV: [number[], number[]] = DEFAULT_EV;
 
 const SEATS = ["UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN", "SB", "BB"];
 const STACK = 20;
@@ -95,6 +143,21 @@ type SeatResult = {
   vsOpenJam: Record<string, Float64Array>;
   /** 앞에서 올인이 나왔을 때 받을지. */
   vsJamCall: Record<string, Float64Array>;
+  /**
+   * 채점에 쓸 액션별 EV(bb). 레인지만으로는 "얼마나 손해였나"를 말할 수 없다.
+   * 전부 순손익이라 폴드는 이미 낸 돈의 마이너스다.
+   */
+  ev: {
+    open: Float64Array;
+    openJam: Float64Array;
+    /** 뒤 자리가 내 오픈에 콜/3벳했을 때의 그 자리 기준 EV. */
+    vsOpenCall: Record<string, Float64Array>;
+    vsOpenJam: Record<string, Float64Array>;
+    /** 내가 3벳 올인을 받았을 때의 EV(3벳한 자리별). */
+    callJam: Record<string, Float64Array>;
+    /** 뒤 자리가 내 오픈 올인을 받았을 때의 그 자리 기준 EV. */
+    vsJamCall: Record<string, Float64Array>;
+  };
 };
 
 const ITERS = Number(process.env.ITERS ?? 3000);
@@ -104,6 +167,7 @@ const ITERS = Number(process.env.ITERS ?? 3000);
  */
 function solveSeat(heroIdx: number): SeatResult {
   const hero = SEATS[heroIdx];
+  FLOP_EV = evTableFor(hero);
   const behind = SEATS.slice(heroIdx + 1);
   const heroPosted = posted(hero);
 
@@ -227,6 +291,73 @@ function solveSeat(heroIdx: number): SeatResult {
     }
   }
 
+  // ── 채점용 EV. 수렴한 전략을 상대로 한 번 더 계산한다.
+  const fCall = vCall.map(freq);
+  const fJam = vJam.map(freq);
+  const firstCall: number[] = [];
+  const firstJam: number[] = [];
+  let survive = 1;
+  for (let k = 0; k < behind.length; k++) {
+    firstCall.push(survive * fCall[k]);
+    firstJam.push(survive * fJam[k]);
+    survive *= Math.max(0, 1 - fCall[k] - fJam[k]);
+  }
+  const allFold = survive;
+  const fJamCall = vJamCall.map(freq);
+  const firstJamCall: number[] = [];
+  let surviveJam = 1;
+  for (let k = 0; k < behind.length; k++) {
+    firstJamCall.push(surviveJam * fJamCall[k]);
+    surviveJam *= 1 - fJamCall[k];
+  }
+
+  const evOpenArr = new Float64Array(N);
+  const evOpenJamArr = new Float64Array(N);
+  const evCallJam = behind.map(() => new Float64Array(N));
+  for (let h = 0; h < N; h++) {
+    let evOpen = allFold * (DEAD - heroPosted);
+    for (let k = 0; k < behind.length; k++) {
+      if (firstCall[k] > 0) {
+        const v = FLOP_EV[1][h];
+        evOpen += firstCall[k] * (Number.isNaN(v) ? -OPEN : v - OPEN);
+      }
+      if (firstJam[k] > 0) {
+        evOpen += firstJam[k] * Math.max(callJamEv(h, vJam[k], posted(behind[k])), -OPEN);
+      }
+      evCallJam[k][h] = callJamEv(h, vJam[k], posted(behind[k]));
+    }
+    evOpenArr[h] = evOpen;
+
+    let evJam = surviveJam * (DEAD - heroPosted);
+    for (let k = 0; k < behind.length; k++) {
+      if (firstJamCall[k] === 0) continue;
+      const pot = 2 * STACK + (DEAD - heroPosted - posted(behind[k]));
+      evJam += firstJamCall[k] * (equityVsRange(h, vJamCall[k]) * pot - (STACK - heroPosted));
+    }
+    evOpenJamArr[h] = evJam;
+  }
+
+  const evVsCall = behind.map(() => new Float64Array(N));
+  const evVsJam = behind.map(() => new Float64Array(N));
+  const evVsJamCall = behind.map(() => new Float64Array(N));
+  const openFreq = freq(open);
+  for (let k = 0; k < behind.length; k++) {
+    const seat = behind[k];
+    const seatPosted = posted(seat);
+    const openAndCall = openRangeCalling(open, cJam[k]);
+    const myCallJamFreq = openFreq > 0 ? freq(openAndCall) / openFreq : 0;
+    const jamPot = 2 * STACK + (DEAD - seatPosted - heroPosted);
+    for (let j = 0; j < N; j++) {
+      const v = FLOP_EV[0][j];
+      const paid = OPEN + (seat === "BB" ? ANTE : 0);
+      evVsCall[k][j] = Number.isNaN(v) ? -paid : v - paid;
+      const win = OPEN + DEAD - seatPosted;
+      const whenCalled = equityVsRange(j, openAndCall) * jamPot - (STACK - seatPosted);
+      evVsJam[k][j] = (1 - myCallJamFreq) * win + myCallJamFreq * whenCalled;
+      evVsJamCall[k][j] = equityVsRange(j, openJam) * jamPot - (STACK - seatPosted);
+    }
+  }
+
   const byName = <T>(vals: T[]) =>
     Object.fromEntries(behind.map((s, k) => [s, vals[k]])) as Record<string, T>;
   return {
@@ -236,6 +367,14 @@ function solveSeat(heroIdx: number): SeatResult {
     vsOpenCall: byName(vCall),
     vsOpenJam: byName(vJam),
     vsJamCall: byName(vJamCall),
+    ev: {
+      open: evOpenArr,
+      openJam: evOpenJamArr,
+      vsOpenCall: byName(evVsCall),
+      vsOpenJam: byName(evVsJam),
+      callJam: byName(evCallJam),
+      vsJamCall: byName(evVsJamCall),
+    },
   };
 }
 
@@ -247,6 +386,8 @@ function openRangeCalling(open: Float64Array, callJam: Float64Array): Float64Arr
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
+/** EV는 0.01bb까지. 채점 최상위 밴드가 0.01bb라 그보다 거칠면 등급이 안 갈린다. */
+const asEv = (a: Float64Array) => Array.from(a, (v) => Math.round(v * 100) / 100);
 const asRange = (a: Float64Array) => {
   const out: Record<string, number> = {};
   for (let j = 0; j < N; j++) if (a[j] > 0.005) out[HANDS[j]] = round2(a[j]);
@@ -271,6 +412,16 @@ for (const [seat, r] of Object.entries(results)) {
     ),
     vsOpenJam: Object.fromEntries(Object.entries(r.vsOpenJam).map(([s, v]) => [s, asRange(v)])),
     vsJamCall: Object.fromEntries(Object.entries(r.vsJamCall).map(([s, v]) => [s, asRange(v)])),
+    // 폴드 EV는 자리마다 상수다(이미 낸 돈의 마이너스).
+    foldEvBb: -posted(seat),
+    ev: {
+      open: asEv(r.ev.open),
+      openJam: asEv(r.ev.openJam),
+      vsOpenCall: Object.fromEntries(Object.entries(r.ev.vsOpenCall).map(([x, v]) => [x, asEv(v)])),
+      vsOpenJam: Object.fromEntries(Object.entries(r.ev.vsOpenJam).map(([x, v]) => [x, asEv(v)])),
+      callJam: Object.fromEntries(Object.entries(r.ev.callJam).map(([x, v]) => [x, asEv(v)])),
+      vsJamCall: Object.fromEntries(Object.entries(r.ev.vsJamCall).map(([x, v]) => [x, asEv(v)])),
+    },
   };
 }
 

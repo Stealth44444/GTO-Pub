@@ -14,9 +14,10 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { ALL_HANDS } from "../src/lib/poker.ts";
 
-const SAMPLE_DIR = "scripts/data/flopev";
+// 구간별로 돌릴 수 있게 경로를 환경변수로 받는다.
+const SAMPLE_DIR = process.env.FLOPEV_DIR ?? "scripts/data/flopev";
 const TRAINER_DIR = "public/postflop";
-const OUT = "src/data/preflop-flopev.json";
+const OUT = process.env.FLOPEV_OUT ?? "src/data/preflop-flopev.json";
 
 /**
  * 표본이 있으면 그걸 쓴다. 22100가지에서 균등하게 뽑은 플랍이라 그냥 평균내면
