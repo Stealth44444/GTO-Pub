@@ -27,15 +27,47 @@ const STATUS = "scripts/data/boards-status.json";
 const FLOOR = process.env.FLOOR ?? "0.005";
 const RUNOUTS_PER_FLOP = Number(process.env.RUNOUTS ?? 2);
 
-const POT_CHIPS = 65;
-const STACK_CHIPS = 165;
-
+/**
+ * 구간 = 오프너 구간 × 콜러 종류. 콜러가 누구냐에 따라 플랍에서 누가 먼저
+ * 치는지가 바뀐다 — BB·SB 콜러는 오프너보다 먼저(OOP), 그 밖의 콜러는
+ * 오프너 뒤(IP)다. BB 콜러로 푼 보드 하나로 IP 콜러 팟을 치면 먼저 치는
+ * 오프너에게 BB 디펜스 레인지가 배정돼, 오프너 핸드 대부분이 레인지 밖이 된다.
+ *
+ * 각 구간은 대표 조합 하나로 푼다. 레인지 폭이 비슷한 자리끼리는 전략도 비슷하다.
+ */
 const BUCKETS = [
   { name: "early", opener: "UTG1", caller: "BB" },
   { name: "middle", opener: "HJ", caller: "BB" },
   { name: "late", opener: "BTN", caller: "BB" },
   { name: "sb", opener: "SB", caller: "BB" },
-];
+  // IP 콜러 구간이 먼저다. SB 콜러는 없어도 BB 구간으로 역할은 맞게 칠 수 있다.
+  { name: "early-ip", opener: "UTG1", caller: "CO" },
+  { name: "middle-ip", opener: "HJ", caller: "BTN" },
+  { name: "late-ip", opener: "CO", caller: "BTN" },
+  { name: "early-sb", opener: "UTG1", caller: "SB" },
+  { name: "middle-sb", opener: "HJ", caller: "SB" },
+  { name: "late-sb", opener: "BTN", caller: "SB" },
+].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
+
+/**
+ * 플랍 시점의 팟과 유효 스택(칩, 1칩 = 0.1bb). 20bb, BB 앤티 1bb, 2.5bb 오픈.
+ *
+ *   BB 콜: 오픈 2.5 + 콜 2.5 + 죽은 SB 0.5 + 앤티 1 = 6.5 / BB는 앤티까지 내서 16.5
+ *   SB 콜: 오픈 2.5 + 콜 2.5 + 죽은 BB 1 + 앤티 1   = 7.0 / 17.5
+ *   그 밖: 오픈 2.5 + 콜 2.5 + 죽은 SB 0.5 + BB 1 + 앤티 1 = 7.5 / 17.5
+ *
+ * 팟을 BB 콜 기준으로 두면 SPR이 틀려 전략이 통째로 달라진다.
+ */
+function potAndStack(caller: string): { pot: number; stack: number } {
+  if (caller === "BB") return { pot: 65, stack: 165 };
+  if (caller === "SB") return { pot: 70, stack: 175 };
+  return { pot: 75, stack: 175 };
+}
+
+/** 플랍에서 콜러가 먼저 치는가. 블라인드만 오프너보다 앞선다. */
+function callerIsOop(caller: string): boolean {
+  return caller === "BB" || caller === "SB";
+}
 
 /**
  * 보드는 질감을 고르게 덮도록 손으로 골랐다. 무작위로 뽑으면 비슷한 보드가
@@ -148,7 +180,13 @@ type Entry = {
   nodeCount: number;
 };
 
-const index: Record<string, Entry[]> = {};
+// 이번에 돌리지 않는 구간은 기존 목록을 그대로 둔다. ONLY로 일부만 돌려도
+// 나머지 구간이 목록에서 빠지지 않는다.
+const index: Record<string, Entry[]> = existsSync(`${OUT_ROOT}/index-buckets.json`)
+  ? (JSON.parse(readFileSync(`${OUT_ROOT}/index-buckets.json`, "utf8")) as {
+      buckets: Record<string, Entry[]>;
+    }).buckets
+  : {};
 setStatus("시작", `구간 ${BUCKETS.length}개 × 플랍 ${FLOPS.length}개 × 런아웃 ${RUNOUTS_PER_FLOP}`);
 
 for (const bucket of BUCKETS) {
@@ -159,8 +197,10 @@ for (const bucket of BUCKETS) {
     setStatus("건너뜀", `${bucket.name}: ${bucket.opener} 레인지 없음`);
     continue;
   }
-  const ip = rangeString(openRange, seatsData.hands);
-  const oop = rangeString(callRange, seatsData.hands);
+  const openStr = rangeString(openRange, seatsData.hands);
+  const callStr = rangeString(callRange, seatsData.hands);
+  const [oop, ip] = callerIsOop(bucket.caller) ? [callStr, openStr] : [openStr, callStr];
+  const { pot, stack } = potAndStack(bucket.caller);
   const dir = `${OUT_ROOT}/${bucket.name}`;
   mkdirSync(dir, { recursive: true });
 
@@ -182,8 +222,8 @@ for (const bucket of BUCKETS) {
         "--runouts", runouts.join(","),
         "--outdir", dir,
         "--tag", bucket.name,
-        "--pot", String(POT_CHIPS),
-        "--stack", String(STACK_CHIPS),
+        "--pot", String(pot),
+        "--stack", String(stack),
         "--floor", FLOOR,
         "--oop-range", oop,
         "--ip-range", ip,

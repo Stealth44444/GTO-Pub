@@ -61,16 +61,39 @@ function loadBuckets(): Promise<Record<string, SpotEntry[]>> {
 }
 
 /**
- * 이 오프너 자리에 맞는 보드 목록. 구간 데이터가 없으면 null을 돌려주고,
- * 부르는 쪽이 기본 목록을 쓴다.
+ * 콜러가 어떤 자리냐에 따른 구간 꼬리표. 블라인드 콜러는 플랍에서 오프너보다
+ * 먼저 치고(OOP), 그 밖의 콜러는 오프너 뒤에서 친다(IP). 누가 먼저 치는지가
+ * 다르면 트리의 두 플레이어가 뒤바뀌므로 같은 보드를 쓸 수 없다.
  */
-export async function spotsForOpener(seat: string): Promise<SpotEntry[] | null> {
-  const name = bucketForOpener(seat);
-  if (!name) return null;
-  const all = await loadBuckets();
-  const list = all[name];
-  return list && list.length > 0 ? list : null;
+function callerSuffix(caller: string): string {
+  if (caller === "BB") return "";
+  if (caller === "SB") return "-sb";
+  return "-ip";
 }
+
+/**
+ * 이 오프너·콜러 조합에 맞는 보드 목록과, 그게 얼마나 맞는지.
+ *
+ *   exact  — 오프너 구간과 콜러 종류(BB / SB / 그 밖)가 모두 맞는 구간이 있다.
+ *   opener — 콜러가 SB인데 SB 구간이 없어 BB 구간을 쓴다. 둘 다 오프너보다
+ *            먼저 치므로 역할은 맞고, 콜 레인지만 다르다.
+ *
+ * 콜러가 IP인데 그 구간이 없으면 null이다. BB 구간으로 대신하면 먼저 치는
+ * 오프너에게 BB 레인지가 배정돼 판이 성립하지 않는다.
+ */
+export async function spotsForPair(
+  opener: string,
+  caller: string,
+): Promise<{ list: SpotEntry[]; fit: "exact" | "opener" } | null> {
+  const base = bucketForOpener(opener);
+  if (!base) return null;
+  const all = await loadBuckets();
+  const exact = all[`${base}${callerSuffix(caller)}`];
+  if (exact && exact.length > 0) return { list: exact, fit: "exact" };
+  if (caller === "SB" && all[base]?.length) return { list: all[base], fit: "opener" };
+  return null;
+}
+
 const cache = new Map<string, SolvedSpot>();
 const inFlight = new Map<string, Promise<SolvedSpot>>();
 

@@ -11,6 +11,7 @@ import { rangeMix, reachWeights } from "@/lib/rangeMix";
 import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
 import { dealCombo } from "@/lib/preflopGame";
+import { loadEquity } from "@/lib/equity";
 import { dealRunout } from "@/lib/runout";
 import { applyAction, startHand, type HandState } from "@/lib/hand";
 import { sampleActionIndex, type Deal } from "@/lib/postflopSpot";
@@ -18,6 +19,7 @@ import { ALL_HANDS, seatNames } from "@/lib/poker";
 import {
   applyHeroAction,
   labelFor,
+  setEquityTable,
   startGame,
   type GameState,
   type SeatAction,
@@ -28,7 +30,7 @@ import {
   loadSpotIndex,
   pickSpotEntry,
   prefetchSpot,
-  spotsForOpener,
+  spotsForPair,
   type SpotEntry,
 } from "@/lib/spotLibrary";
 import { ensureGuestUser, logHand } from "@/lib/attempts";
@@ -165,9 +167,8 @@ function worthPlaying(game: GameState, heroSeat: string): boolean {
   if (o.kind === "flop") return o.opener === heroSeat || o.caller === heroSeat;
   // 다들 접어서 내가 BB로 가져가는 판은 짧아도 보여줄 만하다.
   //
-  // 나머지는 앞자리끼리 끝낸 판이다 — 올인에 콜이 나왔거나, 오픈에 3벳 올인이
-  // 나와 오프너가 답했다. 엔진은 그 뒤 자리를 전부 접은 것으로 적는데 거기에
-  // 나도 들어가서, 고른 적 없는 폴드가 화면에 뜬다.
+  // 나머지는 앞자리끼리 끝낸 판이다 — 올인에 누가 콜했다(콜러는 한 명까지라
+  // 그 뒤는 모두 접는다). 거기에 나도 들어가서, 고른 적 없는 폴드가 화면에 뜬다.
   return o.kind === "folded" && o.winner === heroSeat;
 }
 
@@ -280,6 +281,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   }, [round, decisions, run, newRound]);
 
   useEffect(() => {
+    // 3벳 올인 뒷자리의 EV는 승률표로 낸다. 받기 전에 딜된 판은 그 자리가 접는다.
+    void loadEquity().then(setEquityTable);
     loadSpotIndex()
       .then((list) => {
         setEntries(list);
@@ -439,18 +442,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       );
       timers.current.push(...pending);
     });
-    // 오프너 자리에 맞는 보드가 있으면 그걸 쓴다. 없으면 기본 목록으로 떨어지고,
-    // 그건 BTN-BB 조건이라 다른 자리 조합에는 근사다.
-    void spotsForOpener(openerSeat)
-      .then((list) => {
-        const pool = list ?? entries;
+    // 오프너·콜러 조합에 맞는 보드가 있으면 그걸 쓴다. 없으면 기본 목록(BTN 오픈,
+    // BB 콜)으로 떨어지는데, 그건 콜러가 오프너보다 먼저 치는 조건이다. 콜러가
+    // IP면 역할이 뒤바뀌어 쓸 수 없으므로 판을 접는다.
+    const callerIp = outcome.caller !== "BB" && outcome.caller !== "SB";
+    void spotsForPair(openerSeat, outcome.caller)
+      .then((found) => {
+        if (!found && callerIp) throw new Error("no-ip-boards");
+        const pool = found?.list ?? entries;
         const entry = pickSpotEntry(pool, Math.random, round.entry?.file);
-        // 구간은 오프너로만 고른다. 콜러가 BB가 아니면 콜 레인지는 여전히 다르다.
-        const fit: "exact" | "opener" | "none" = !list
-          ? "none"
-          : outcome.caller === "BB"
-            ? "exact"
-            : "opener";
+        const fit: "exact" | "opener" | "none" = found?.fit ?? "none";
         return loadSpot(entry).then(async (spot) => {
           await settled;
           return { spot, entry, pool, fit };
@@ -506,8 +507,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         setPhase("postflop");
         prefetchSpot(pickSpotEntry(pool, Math.random, entry.file));
       })
-      .catch(() => {
-        setEnding("보드를 불러오지 못했습니다");
+      .catch((err: unknown) => {
+        setEnding(
+          err instanceof Error && err.message === "no-ip-boards"
+            ? `${outcome.opener} 오픈에 ${outcome.caller}가 콜한 보드는 아직 준비 중입니다`
+            : "보드를 불러오지 못했습니다",
+        );
         setPhase("over");
       });
     return () => {
@@ -679,6 +684,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         return null;
       }
       if (a !== "call") return null;
+      // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.
+      if (stage.opener) return null;
       return stage.iOpened
         ? (me?.callJam?.[stage.jammer] ?? null)
         : (SEATS_DATA.seats[stage.jammer]?.vsJamCall?.[round.heroSeat] ?? null);
@@ -703,7 +710,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         ? "firstIn"
         : stage.kind === "vsOpen"
           ? `vsOpen:${stage.opener}`
-          : `vsJam:${stage.jammer}`,
+          : `vsJam:${stage.jammer}${stage.opener ? `:${stage.opener}` : ""}`,
     );
     setDecisions((prev) => [
       ...prev,
@@ -711,7 +718,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       stage.kind === "vsJam"
         ? {
             ...decision,
-            jam: { heroSeat: round.heroSeat, jammer: stage.jammer, iOpened: stage.iOpened },
+            jam: {
+              heroSeat: round.heroSeat,
+              jammer: stage.jammer,
+              iOpened: stage.iOpened,
+              ...(stage.opener ? { opener: stage.opener } : {}),
+            },
           }
         : decision,
     ]);
@@ -1021,7 +1033,7 @@ function boardCaveat(
   if (fit === "exact") return undefined;
   if (fit === "opener") {
     const opener = outcome?.kind === "flop" ? outcome.opener : null;
-    return `${opener ?? "오프너"} 자리에 맞는 보드를 쓰지만, 콜한 쪽을 BB로 가정하고 풀린 데이터입니다. ${villainSeat}의 콜 레인지는 이보다 좁습니다.`;
+    return `${opener ?? "오프너"} 자리에 맞는 보드를 쓰지만, SB 콜이 아니라 BB 콜로 풀린 데이터입니다. 먼저 치는 순서는 같고 콜 레인지만 다릅니다.`;
   }
   return `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`;
 }
