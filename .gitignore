@@ -54,6 +54,6 @@ public/postflop/*/.done/
 scripts/data/pipeline.log
 dev.log
 scripts/data/boards-run.log
-# 솔브 중인 보드 세트. 세트가 끝나면 git add -f 또는 Storage로 올린다.
+# 새 보드 세트는 저장소가 아니라 Supabase Storage에만 올린다(scripts/upload-boards.ts).
 public/postflop/*-ip/
 public/postflop/*-sb/
