@@ -369,3 +369,13 @@ body {
     opacity: 1;
   }
 }
+
+/* 잘 친 판이 다음 판으로 넘어가기까지 남은 시간. */
+@keyframes gw-autonext {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}

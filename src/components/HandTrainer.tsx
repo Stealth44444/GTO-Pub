@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import seatsRaw from "@/data/preflop-seats.json";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
-import { makeDecision, type Decision } from "@/lib/decisions";
+import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
 import RunRecap from "./RunRecap";
@@ -35,6 +35,7 @@ import {
 } from "@/lib/spotLibrary";
 import { ensureGuestUser, logHand } from "@/lib/attempts";
 import { currentUserId } from "@/lib/session";
+import GradeIcon from "./GradeIcon";
 import HandResult from "./HandResult";
 import PokerTable from "./PokerTable";
 import { dealDurationMs } from "./BoardCard";
@@ -104,6 +105,18 @@ const tableHand = ALL_HANDS[0];
 /** 한 스텝이 화면에 나타나고 다음으로 넘어가기까지. 폴드는 실제로도 빠르다. */
 const STEP_MS = 620;
 const FOLD_STEP_MS = 320;
+/**
+ * 내가 접은 뒤 남은 자리들의 액션. 내 판은 끝났으니 기다리게 할 이유가 없다.
+ * 아예 건너뛰면 누가 팟을 가져갔는지가 사라지므로 빨리 감기만 한다.
+ */
+const AFTER_FOLD_STEP_MS = 90;
+const AFTER_FOLD_ACTION_MS = 260;
+
+/**
+ * 잘 친 판(모든 판단이 무난 이상)은 결과 창 없이 이만큼 보여주고 넘어간다.
+ * 매 판 결과 창을 닫게 하면 흐름이 판마다 끊긴다. 실수한 판만 멈춘다.
+ */
+const AUTO_NEXT_MS = 1600;
 
 /**
  * 플랍부터의 액션 순서. 프리플랍은 UTG부터지만 플랍부터는 SB부터다.
@@ -318,7 +331,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   useEffect(() => {
     if (!round || revealed >= round.game.steps.length) return;
     const step = round.game.steps[revealed];
-    const wait = step.kind === "fold" ? FOLD_STEP_MS : STEP_MS;
+    const heroOut = round.game.steps
+      .slice(0, revealed)
+      .some((s) => s.seat === round.heroSeat && s.kind === "fold");
+    const wait = heroOut
+      ? step.kind === "fold"
+        ? AFTER_FOLD_STEP_MS
+        : AFTER_FOLD_ACTION_MS
+      : step.kind === "fold"
+        ? FOLD_STEP_MS
+        : STEP_MS;
     const t = window.setTimeout(() => setRevealed((n) => n + 1), wait);
     timers.current.push(t);
     return () => window.clearTimeout(t);
@@ -643,15 +665,31 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   // 상대 카드를 까고 한 박자 뒤에 결과 창을 올린다. 깔 카드가 없으면
   // (프리플랍에서 다들 접은 판) 기다릴 이유가 없다.
   const allinBoardLength = round?.allinBoard?.length ?? 0;
+  // 올인 런아웃은 다섯 장을 차례로 깐다. 다 깔린 뒤부터 읽을 시간을 센다.
+  const revealMs = !villainReveal
+    ? 0
+    : shown
+      ? (allinBoardLength ? dealDurationMs(0, allinBoardLength) : 0) + REVEAL_SHOWDOWN_MS
+      : REVEAL_FOLD_MS;
+  const handScore = scoreHand(decisions);
+  /** 모든 판단이 무난 이상이다. 이런 판은 결과 창 없이 넘어간다. */
+  const handClean = decisions.every((d) => !d.grade || d.grade.rank <= 1);
   useEffect(() => {
-    if ((!ending && phase !== "over") || resultReady) return;
-    // 올인 런아웃은 다섯 장을 차례로 깐다. 다 깔린 뒤부터 읽을 시간을 센다.
-    const runoutMs = allinBoardLength ? dealDurationMs(0, allinBoardLength) : 0;
-    const wait = !villainReveal ? 0 : shown ? runoutMs + REVEAL_SHOWDOWN_MS : REVEAL_FOLD_MS;
-    const t = window.setTimeout(() => setResultReady(true), wait);
+    if ((!ending && phase !== "over") || resultReady || handClean) return;
+    const t = window.setTimeout(() => setResultReady(true), revealMs);
     timers.current.push(t);
     return () => window.clearTimeout(t);
-  }, [ending, phase, resultReady, villainReveal, shown, allinBoardLength]);
+  }, [ending, phase, resultReady, revealMs, handClean]);
+
+  // 잘 친 판은 결과 창을 띄우지 않고 넘어간다. 아래 바를 누르면 결과 창이
+  // 열리고(resultReady), 그러면 이 타이머는 취소된다.
+  const autoNext = Boolean(ending || phase === "over") && handClean && !resultReady;
+  useEffect(() => {
+    if (!autoNext) return;
+    const t = window.setTimeout(finishHand, revealMs + AUTO_NEXT_MS);
+    timers.current.push(t);
+    return () => window.clearTimeout(t);
+  }, [autoNext, revealMs, finishHand]);
 
   // 판이 끝나면 그 판의 판단을 한 번에 남긴다.
   useEffect(() => {
@@ -807,6 +845,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   }
 
   const preTurnReady = Boolean(round.game.turn && allRevealed && !ending);
+  const lastDecision = decisions.at(-1) ?? null;
   const street =
     phase === "postflop" && round.post ? round.post.street.toUpperCase() : "PREFLOP";
   // 플랍 전에는 상대가 정해지지 않았으므로, 살아 있을 수 있는 자리를 접지 않는다.
@@ -908,14 +947,28 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           <button
             type="button"
             onClick={() => setResultReady(true)}
-            className="flex w-full items-center justify-between gap-3 rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
+            className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-3.5 text-left transition active:scale-[0.98]"
           >
+            {handScore.grade && (
+              <GradeIcon id={handScore.grade.id} color={handScore.grade.color} />
+            )}
             <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--gw-text-secondary)]">
               {ending ?? "핸드 종료"}
             </span>
-            <span className="gw-label-ko shrink-0 text-[10px] text-[var(--gw-text-muted)]">
-              결과 보기
-            </span>
+            {handScore.gradedCount > 0 && handScore.totalLossBb > 0 && (
+              <span className="gw-num shrink-0 text-[11px] text-[var(--gw-text-muted)]">
+                -{handScore.totalLossBb}bb
+              </span>
+            )}
+            {autoNext && (
+              // 곧 다음 판으로 넘어간다는 표시. 누르면 멈추고 결과를 연다.
+              <span
+                key={round.id}
+                aria-hidden
+                className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-[var(--gw-border-strong)] motion-reduce:hidden"
+                style={{ animation: `gw-autonext ${AUTO_NEXT_MS}ms linear ${revealMs}ms both` }}
+              />
+            )}
           </button>
         )}
         {!ending && round.game.turn && phase === "preflop" && (
@@ -945,7 +998,34 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           </div>
         )}
 
-        {!ending && phase === "postflop" && round.post?.node && (
+        {/*
+          방금 고른 판단의 등급. 판이 끝날 때까지 기다리지 않고 바로 보여준다 —
+          다음 판단을 하기 전에 앞의 판단이 맞았는지 알아야 고칠 수 있다.
+          버튼 자리를 그대로 쓰므로 테이블이 움직이지 않는다.
+        */}
+        {!ending &&
+          lastDecision &&
+          !(phase === "preflop" && round.game.turn) &&
+          !(phase === "postflop" && postHeroTurn && round.post?.node) && (
+            <div
+              key={decisions.length}
+              className="flex h-[54px] items-center justify-center gap-2 animate-[gw-history-enter_220ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
+            >
+              {lastDecision.grade && (
+                <GradeIcon id={lastDecision.grade.id} color={lastDecision.grade.color} />
+              )}
+              <span className="text-[13px] font-semibold text-[var(--gw-text-secondary)]">
+                {lastDecision.chosen}
+              </span>
+              {lastDecision.lossBb !== null && lastDecision.lossBb > 0 && (
+                <span className="gw-num text-[11px] text-[var(--gw-text-muted)]">
+                  -{lastDecision.lossBb}bb
+                </span>
+              )}
+            </div>
+          )}
+
+        {!ending && phase === "postflop" && postHeroTurn && round.post?.node && (
           <div
             className="grid gap-2.5"
             style={{
