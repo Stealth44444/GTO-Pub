@@ -16,6 +16,7 @@ import {
   stepLabel,
   type PreflopStep,
 } from "@/lib/preflop";
+import BoardCard from "./BoardCard";
 import Card from "./Card";
 
 // 딜마다 증가하는 키. 링 애니메이션을 다시 돌리는 용도로만 쓴다.
@@ -275,14 +276,13 @@ export default function PokerTable({
           {parsedBoard && (
             <div className="flex gap-1">
               {parsedBoard.map((card, index) => (
-                <Card
+                // 이번에 새로 나온 카드만 움직인다. 이미 깔린 카드는 제자리다.
+                <BoardCard
                   key={`${card.rank}${card.suit}-${index}`}
                   rank={card.rank}
                   suit={card.suit}
-                  className="animate-[gw-card-deal_380ms_cubic-bezier(0.22,1,0.36,1)_both] motion-reduce:animate-none"
-                  // 이번에 새로 나온 카드들만 차례로 놓인다. 턴 한 장이
-                  // 네 번째라는 이유로 300ms를 기다리면 안 된다.
-                  style={{ animationDelay: `${Math.max(0, index - boardDealFrom) * 170}ms` }}
+                  index={index}
+                  dealFrom={boardDealFrom}
                 />
               ))}
             </div>

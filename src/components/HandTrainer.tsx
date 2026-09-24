@@ -35,6 +35,7 @@ import { ensureGuestUser, logHand } from "@/lib/attempts";
 import { currentUserId } from "@/lib/session";
 import HandResult from "./HandResult";
 import PokerTable from "./PokerTable";
+import { dealDurationMs } from "./BoardCard";
 
 const SEATS_DATA = seatsRaw as unknown as SeatsData;
 const TABLE_SIZE = SEATS_DATA.tableSize;
@@ -89,6 +90,12 @@ const REVEAL_SHOWDOWN_MS = 2600;
 
 /** 각 스트릿에서 이미 깔려 있던 카드 수. 새 카드는 여기서부터 놓인다. */
 const DEAL_FROM: Record<string, number> = { flop: 0, turn: 3, river: 4 };
+
+/**
+ * 마지막 카드가 앞면으로 놓이고 차례가 열리기까지. 카드가 멈추는 것과 차례
+ * 표시가 켜지는 것이 같은 프레임이면 카드를 볼 틈 없이 눈이 좌석으로 끌려간다.
+ */
+const BOARD_SETTLE_MS = 160;
 const SEATS = seatNames(TABLE_SIZE);
 const tableHand = ALL_HANDS[0];
 
@@ -227,6 +234,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [preflopSweep, setPreflopSweep] = useState(false);
   /** 결과 창을 올려도 되는가. 상대 카드를 보여준 뒤에 참이 된다. */
   const [resultReady, setResultReady] = useState(false);
+  /** 이 스트릿의 보드가 다 깔렸는가. 깔린 스트릿의 키를 담는다. */
+  const [settledKey, setSettledKey] = useState<string | null>(null);
   const timers = useRef<number[]>([]);
   const loggedRef = useRef<number | null>(null);
 
@@ -335,6 +344,33 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const roundKey = view && round ? `${round.id}-${view.frontBb}-${round.post?.street}` : null;
   const swept = Boolean(view?.closed) && sweptKey === roundKey;
   const chipsShown = Boolean(view) && !swept && (view?.frontBb ?? 0) > 0;
+
+  // 스트릿이 닫혔으면 딜러가 칩을 팟으로 모은 뒤에 다음 카드를 깐다. 그 전까지는
+  // 이전 스트릿의 보드를 그대로 둔다 — 칩이 날아가는 동안 카드가 놓이면 두 동작이
+  // 겹쳐 라운드가 칩 수거와 동시에 시작된 것처럼 보인다.
+  const postStreet = round?.post?.street ?? "flop";
+  const lastStreet = round?.post?.history.at(-1)?.street;
+  const holdingBoard = Boolean(lastStreet && lastStreet !== postStreet) && !swept;
+  const dealFrom = DEAL_FROM[postStreet];
+  const postBoard =
+    phase === "postflop" && flopReady && round?.post
+      ? holdingBoard
+        ? round.post.board.slice(0, dealFrom)
+        : round.post.board
+      : undefined;
+  const boardKey =
+    postBoard && !holdingBoard && round ? `${round.id}-${postStreet}` : null;
+  /** 보드가 다 깔렸다. 그 전에는 누구도 이 스트릿의 액션을 하지 않는다. */
+  const boardSettled = boardKey !== null && settledKey === boardKey;
+  const postBoardLength = postBoard?.length ?? 0;
+
+  useEffect(() => {
+    if (!boardKey || settledKey === boardKey) return;
+    const wait = dealDurationMs(dealFrom, postBoardLength - dealFrom) + BOARD_SETTLE_MS;
+    const t = window.setTimeout(() => setSettledKey(boardKey), wait);
+    timers.current.push(t);
+    return () => window.clearTimeout(t);
+  }, [boardKey, settledKey, dealFrom, postBoardLength]);
 
   // 프리플랍이 끝나고 모든 액션을 다 보여줬으면 다음으로 넘긴다.
   useEffect(() => {
@@ -498,7 +534,15 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     round?.deal && round.deal.handIdx[round.deal.heroPlayer] < 0,
   );
   useEffect(() => {
-    if (phase !== "postflop" || !round?.post?.node || !round.spot || postHeroTurn || ending) return;
+    if (
+      phase !== "postflop" ||
+      !round?.post?.node ||
+      !round.spot ||
+      postHeroTurn ||
+      ending ||
+      !boardSettled
+    )
+      return;
     const t = window.setTimeout(() => {
       setRound((cur) => {
         if (!cur?.post?.node || !cur.spot || !cur.deal) return cur;
@@ -519,7 +563,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     }, 700);
     timers.current.push(t);
     return () => window.clearTimeout(t);
-  }, [phase, round, postHeroTurn, ending]);
+  }, [phase, round, postHeroTurn, ending, boardSettled]);
 
   // 팟이 정리되고 한 박자 뒤에 보드를 연다.
   useEffect(() => {
@@ -573,13 +617,16 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
   // 상대 카드를 까고 한 박자 뒤에 결과 창을 올린다. 깔 카드가 없으면
   // (프리플랍에서 다들 접은 판) 기다릴 이유가 없다.
+  const allinBoardLength = round?.allinBoard?.length ?? 0;
   useEffect(() => {
     if ((!ending && phase !== "over") || resultReady) return;
-    const wait = !villainReveal ? 0 : shown ? REVEAL_SHOWDOWN_MS : REVEAL_FOLD_MS;
+    // 올인 런아웃은 다섯 장을 차례로 깐다. 다 깔린 뒤부터 읽을 시간을 센다.
+    const runoutMs = allinBoardLength ? dealDurationMs(0, allinBoardLength) : 0;
+    const wait = !villainReveal ? 0 : shown ? runoutMs + REVEAL_SHOWDOWN_MS : REVEAL_FOLD_MS;
     const t = window.setTimeout(() => setResultReady(true), wait);
     timers.current.push(t);
     return () => window.clearTimeout(t);
-  }, [ending, phase, resultReady, villainReveal, shown]);
+  }, [ending, phase, resultReady, villainReveal, shown, allinBoardLength]);
 
   // 판이 끝나면 그 판의 판단을 한 번에 남긴다.
   useEffect(() => {
@@ -674,7 +721,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   };
 
   const choosePostflop = (index: number) => {
-    if (!round?.post?.node || !round.spot || !round.deal || !postHeroTurn || ending) return;
+    if (!round?.post?.node || !round.spot || !round.deal || !postHeroTurn || ending || !boardSettled)
+      return;
     const node = round.post.node;
     const heroIdx = round.deal.handIdx[round.deal.heroPlayer];
     // 레인지 밖이면 비교할 값이 없다. 0으로 채우면 아무거나 최선이 된다.
@@ -771,13 +819,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             stackBb={SEATS_DATA.stackBb}
             anteBb={SEATS_DATA.anteBb}
             shoverPosition={null}
-            awaitingAction={preTurnReady || (phase === "postflop" && postHeroTurn && !ending)}
+            awaitingAction={
+              preTurnReady || (phase === "postflop" && postHeroTurn && boardSettled && !ending)
+            }
             hand={tableHand}
             heroCards={heroCards}
-            board={
-              round.allinBoard ??
-              (phase === "postflop" && flopReady ? round.post?.board : undefined)
-            }
+            board={round.allinBoard ?? postBoard}
             // 스트릿이 곧 "몇 장이 이미 있었나"다. 올인 런아웃은 다섯 장을
             // 한꺼번에 까므로 처음부터 차례로 놓는다.
             boardDealFrom={
@@ -798,7 +845,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
               villainReveal && villainSeat ? { [villainSeat]: villainReveal } : undefined
             }
             dealKey={String(round.id)}
-            actionSeat={phase === "postflop" ? postActionSeat : undefined}
+            // 보드가 다 깔리기 전에는 아무 자리도 차례가 아니다.
+            actionSeat={
+              phase === "postflop" ? (boardSettled ? postActionSeat : null) : undefined
+            }
             foldedSeats={foldedSeats}
             preflopScript={round.game.steps}
             revealedSteps={phase === "postflop" ? undefined : revealed}
@@ -874,7 +924,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
               <button
                 key={`${action.kind}-${action.amountBb}`}
                 type="button"
-                disabled={!postHeroTurn}
+                disabled={!postHeroTurn || !boardSettled}
                 onClick={() => choosePostflop(index)}
                 className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold tracking-[-0.01em] transition active:scale-95 disabled:cursor-wait disabled:opacity-40 ${
                   action.kind === "fold"

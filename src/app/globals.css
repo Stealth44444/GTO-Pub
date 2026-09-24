@@ -300,22 +300,45 @@ body {
 }
 
 /*
- * 보드에 카드가 놓이는 동작.
+ * 보드 카드 (BoardCard.tsx). 세 겹으로 나눠 각자 한 가지만 움직인다.
  *
- * 전에는 16px만 올라와서 "생겨났다"로 읽혔다. 딜러가 던진 카드는 옆에서
- * 들어와 자리에 내려앉는다. 거리를 늘리고 각도를 줘서 그 방향을 만든다.
+ * slide  — 딜러 쪽(위)에서 뒷면으로 미끄러져 온다. 처음엔 빠르고 펠트 마찰로
+ *          길게 감속한다. 튕기지 않는다 — 천 위의 카드는 튀지 않는다.
+ * flip   — 멈춘 자리에서 세로축으로 뒤집힌다. 뒤집는 중간에 살짝 들린다.
+ * spread — 플랍만. 겹쳐 뒤집은 세 장을 옆으로 펼친다. 100%는 카드 한 장 폭.
  */
-@keyframes gw-card-deal {
+@keyframes gw-board-slide {
   from {
     opacity: 0;
-    transform: translate(-34px, -22px) scale(0.82) rotate(-14deg);
+    transform: translate(-26px, -84px) rotate(-11deg);
   }
-  60% {
+  12% {
     opacity: 1;
   }
   to {
     opacity: 1;
-    transform: translate(0, 0) scale(1) rotate(0);
+    transform: translate(0, 0) rotate(0);
+  }
+}
+
+@keyframes gw-board-flip {
+  from {
+    transform: perspective(700px) rotateY(-180deg);
+  }
+  50% {
+    transform: perspective(700px) rotateY(-90deg) translateY(-3px) scale(1.07);
+  }
+  to {
+    transform: perspective(700px) rotateY(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes gw-board-spread {
+  from {
+    transform: translateX(calc(var(--gw-slot, 0) * -1 * (100% + 4px)));
+  }
+  to {
+    transform: translateX(0);
   }
 }
 
