@@ -68,8 +68,13 @@ type Round = {
   allinBoard: string[] | null;
   allinCards: { hero: [string, string]; villain: [string, string] } | null;
   entry: SpotEntry | null;
-  /** 오프너 자리에 맞는 보드를 썼는가. 아니면 채점이 근사다. */
-  matchedBucket: boolean;
+  /**
+   * 이 보드가 실제 상황과 얼마나 맞는가.
+   *   exact   — 오프너 구간도, 콜러가 BB인 것도 맞다.
+   *   opener  — 구간은 맞지만 콜러가 BB가 아니다. 콜 레인지가 다르다.
+   *   none    — 구간 데이터가 없어 기본 보드(BTN·BB)로 떨어졌다.
+   */
+  boardFit: "exact" | "opener" | "none";
   spot: SolvedSpot | null;
   post: HandState | null;
   deal: Deal | null;
@@ -103,7 +108,7 @@ function freshRound(fixedSeat?: string | null): Round {
     allinBoard: null,
     allinCards: null,
     entry: null,
-    matchedBucket: false,
+    boardFit: "none",
     spot: null,
     post: null,
     deal: null,
@@ -240,9 +245,15 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       .then((list) => {
         const pool = list ?? entries;
         const entry = pickSpotEntry(pool, Math.random, round.entry?.file);
-        return loadSpot(entry).then((spot) => ({ spot, entry, pool, matched: Boolean(list) }));
+        // 구간은 오프너로만 고른다. 콜러가 BB가 아니면 콜 레인지는 여전히 다르다.
+        const fit: "exact" | "opener" | "none" = !list
+          ? "none"
+          : outcome.caller === "BB"
+            ? "exact"
+            : "opener";
+        return loadSpot(entry).then((spot) => ({ spot, entry, pool, fit }));
       })
-      .then(({ spot, entry, pool, matched }) => {
+      .then(({ spot, entry, pool, fit }) => {
         if (!alive) return;
         const board = new Set(spot.flop);
         // 플랍부터는 SB 쪽에 가까운 자리가 먼저 친다. 그쪽이 OOP다.
@@ -278,7 +289,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             ? {
                 ...cur,
                 entry,
-                matchedBucket: matched,
+                boardFit: fit,
                 spot,
                 post: startHand(spot),
                 deal: { heroPlayer, hands, handIdx },
@@ -608,9 +619,8 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           handCode={round.hands[round.heroSeat]}
           note={ending ?? "핸드 종료"}
           caveat={
-            // 오프너 자리에 맞는 보드를 못 썼다면 레인지가 달라 채점이 근사다.
-            phase === "postflop" && villainSeat && !round.matchedBucket
-              ? `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`
+            phase === "postflop" && villainSeat
+              ? boardCaveat(round.boardFit, round.game.outcome, heroSeat, villainSeat)
               : undefined
           }
           showdown={
@@ -646,4 +656,24 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       )}
     </div>
   );
+}
+
+/**
+ * 이 보드로 매긴 값이 어디까지 믿을 만한지.
+ *
+ * 맞는 조건에서 경고를 띄우면 다음부터 경고를 안 읽는다. 그래서 정확히
+ * 무엇이 다른지만 말하고, 다 맞으면 아무 말도 하지 않는다.
+ */
+function boardCaveat(
+  fit: "exact" | "opener" | "none",
+  outcome: { kind: string; opener?: string } | null,
+  heroSeat: string,
+  villainSeat: string,
+): string | undefined {
+  if (fit === "exact") return undefined;
+  if (fit === "opener") {
+    const opener = outcome?.kind === "flop" ? outcome.opener : null;
+    return `${opener ?? "오프너"} 자리에 맞는 보드를 쓰지만, 콜한 쪽을 BB로 가정하고 풀린 데이터입니다. ${villainSeat}의 콜 레인지는 이보다 좁습니다.`;
+  }
+  return `플랍부터의 채점은 BTN 대 BB 조건으로 풀린 데이터를 씁니다. ${heroSeat} 대 ${villainSeat}는 레인지가 달라 값이 정확하지 않습니다.`;
 }

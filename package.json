@@ -22,7 +22,8 @@
     "preflop:seats": "node --experimental-strip-types scripts/solve-preflop-seats.ts",
     "seatgame:test": "node --experimental-strip-types scripts/seatGame.test.ts",
     "buckets": "node --experimental-strip-types scripts/pipeline-buckets.ts",
-    "boards": "node --experimental-strip-types scripts/pipeline-boards.ts"
+    "boards": "node --experimental-strip-types scripts/pipeline-boards.ts",
+    "boards:prune": "node --experimental-strip-types scripts/prune-default-boards.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
