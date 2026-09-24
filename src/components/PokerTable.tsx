@@ -45,8 +45,16 @@ const LAST_ACTION_HOLD_MS = 620;
  * 클래스 이름을 이렇게 통째로 적어 둬야 한다 — Tailwind는 소스에 문자 그대로
  * 있는 클래스만 찾아 CSS를 만들고, 템플릿 리터럴로 조립한 이름은 놓친다.
  */
+/*
+ * 폴드만 280ms다.
+ *
+ * 폴드는 320ms 간격으로 들어오는데 동작이 420ms면 다음 폴드가 앞 동작을
+ * 76%에서 끊는다. 여섯 자리가 연달아 접으면 아무것도 제대로 안 끝나서
+ * 화면이 휙휙 지나가는 것처럼 보인다. 간격을 늘리는 대신 동작을 줄였다 —
+ * 폴드는 읽을 것이 없으니 빨리 지나가도 되고, 잘리지만 않으면 된다.
+ */
 const POP_CLASS: Record<string, string> = {
-  fold: "animate-[gw-action-pop-fold_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
+  fold: "animate-[gw-action-pop-fold_280ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
   check: "animate-[gw-action-pop-check_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
   call: "animate-[gw-action-pop-call_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",
   bet: "animate-[gw-action-pop-allin_420ms_cubic-bezier(0.34,1.8,0.64,1)_both]",

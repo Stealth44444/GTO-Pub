@@ -57,7 +57,15 @@ const ACTION_BAR_MIN_H = "70px";
  * 보드를 받아오는 시간과 무관하게 일정해야 한다 — 받아오는 시간은 판마다
  * 다르고, 그러면 리듬이 판마다 달라진다.
  */
-const FLOP_BEAT_MS = 620;
+const FLOP_BEAT_MS = 420;
+
+/**
+ * 마지막 프리플랍 액션이 뜨고부터 포스트플랍으로 넘어가기까지.
+ *
+ * 액션이 튀어나오는 동작이 420ms다. 그보다 짧게 잡으면 읽기도 전에 화면이
+ * 바뀐다.
+ */
+const PREFLOP_SETTLE_MS = 680;
 
 /** 각 스트릿에서 이미 깔려 있던 카드 수. 새 카드는 여기서부터 놓인다. */
 const DEAL_FROM: Record<string, number> = { flop: 0, turn: 3, river: 4 };
@@ -294,6 +302,19 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     if (!entries || !villainSeat) return;
     let alive = true;
     const openerSeat = outcome.opener;
+
+    // 마지막 액션을 읽을 시간을 준다.
+    //
+    // 포스트플랍으로 넘어가는 순간 프리플랍 액션 표시가 한꺼번에 지워진다.
+    // 보드 파일이 미리 받아져 있으면 그 전환이 마지막 액션이 뜬 바로 다음
+    // 프레임에 일어나서, "BB 콜"이 떴다 사라지며 취소된 것처럼 보인다.
+    //
+    // 파일을 받는 일은 지금 바로 시작하되, 넘어가는 것만 늦춘다. 그래야
+    // 받아오는 시간이 길든 짧든 리듬이 같다.
+    const settled = new Promise<void>((resolve) => {
+      const t = window.setTimeout(resolve, PREFLOP_SETTLE_MS);
+      timers.current.push(t);
+    });
     // 오프너 자리에 맞는 보드가 있으면 그걸 쓴다. 없으면 기본 목록으로 떨어지고,
     // 그건 BTN-BB 조건이라 다른 자리 조합에는 근사다.
     void spotsForOpener(openerSeat)
@@ -306,7 +327,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           : outcome.caller === "BB"
             ? "exact"
             : "opener";
-        return loadSpot(entry).then((spot) => ({ spot, entry, pool, fit }));
+        return loadSpot(entry).then(async (spot) => {
+          await settled;
+          return { spot, entry, pool, fit };
+        });
       })
       .then(({ spot, entry, pool, fit }) => {
         if (!alive) return;
