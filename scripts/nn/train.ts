@@ -98,7 +98,10 @@ function samplesFor(line: string, range: [number, number]): Sample[] {
         x: handFeatures(flop, h, feats[fi].equity[p][hi], feats[fi].rangeEq[p]),
         strat,
         ev,
-        evPot: ev.map((v) => v / file.potBb),
+        // 채점에 필요한 건 액션 사이의 차이뿐이다. 절대 EV는 보드와 레인지에 따라
+        // 크게 오르내려 배우기 어렵고, 틀려도 등급은 바뀌지 않는다. 그래서 첫 액션
+        // (체크) 대비 차이를 팟 비율로 배운다.
+        evPot: ev.map((v) => (v - ev[0]) / file.potBb),
         weight,
         flop: file.flop,
       });
@@ -232,7 +235,9 @@ function evaluate(model: StrategyModel, data: Sample[], potBb: Map<string, numbe
   for (const s of data) {
     const pot = potBb.get(s.flop)!;
     const out = forward(model, s.x);
-    const predEv = out.evPot.map((e) => e * pot);
+    // 모델은 첫 액션 대비 차이를 낸다. 비교를 위해 실제 첫 액션 EV에 얹는다 —
+    // 등급은 차이로만 정해지므로 이 기준점은 결과에 영향이 없다.
+    const predEv = out.evPot.map((e) => e * pot + s.ev[0]);
     const n = s.ev.length;
     const trueBest = Math.max(...s.ev);
     const predBest = Math.max(...predEv);
