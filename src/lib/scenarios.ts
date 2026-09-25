@@ -4,7 +4,7 @@ import { callEv, findCallSpot } from "./callspots";
 
 // 학습 카테고리는 "무엇을 배우나"이고, 인원·스택은 "어떤 조건에서"다.
 // 둘은 별개 축이라, 조합이 늘어나도 카테고리는 늘지 않는다.
-export type ModeId = "pushfold" | "vsshove" | "rfi" | "vsopen" | "hand" | "icm";
+export type ModeId = "pushfold" | "vsshove" | "rfi" | "vsopen" | "hand" | "run" | "icm";
 
 export type ActionId = "shove" | "call" | "open" | "fold";
 
@@ -48,6 +48,12 @@ export const MODES: ModeInfo[] = [
     id: "hand",
     title: "한 판 전체",
     summary: "프리플랍부터 리버까지 한 판을 그대로 치고, 매 판단을 채점받습니다.",
+    available: true,
+  },
+  {
+    id: "run",
+    title: "토너먼트 런",
+    summary: "판이 이어지고 블라인드가 오릅니다. 버스트 전까지 버팁니다.",
     available: true,
   },
   {

@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SEATS_DATA } from "@/lib/seatsData";
-import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
+import { actionEvFor, actionLabel, boardAt, type SolvedSpot } from "@/lib/tree";
+import { committedBySeat } from "@/lib/preflop";
+import { judge } from "@/lib/showdown";
+import { postflopNet, preflopNet, type Winner } from "@/lib/handNet";
 import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
@@ -251,7 +254,65 @@ function freshRound(fixedSeat: string | null | undefined, skills: SkillMap): Rou
   };
 }
 
-export default function HandTrainer({ seat }: { seat?: string | null }) {
+/** 한 판이 끝났을 때 런에 넘기는 값. */
+export type HandOutcome = { netBb: number; lossBb: number; graded: number };
+
+/**
+ * 이 판에서 히어로가 실제로 얻거나 잃은 칩과, 판단들이 최선에서 잃은 양.
+ * 보드를 못 불러와 플랍에서 멈춘 판은 무효로 본다(손익 0).
+ */
+function handOutcome(round: Round, decisions: Decision[]): HandOutcome {
+  const graded = decisions.filter((d) => d.lossBb !== null);
+  const lossBb = Math.round(graded.reduce((a, d) => a + (d.lossBb ?? 0), 0) * 100) / 100;
+  const hero = round.heroSeat;
+  const steps = round.game.steps;
+  const committed = committedBySeat(TABLE_SIZE, SEATS_DATA.anteBb, steps, steps.length);
+  const o = round.game.outcome;
+  let netBb = 0;
+  if (o?.kind === "folded") {
+    netBb = preflopNet(committed, hero, o.winner === hero ? "hero" : "villain");
+  } else if (o?.kind === "allin") {
+    const involved = o.a === hero || o.b === hero;
+    if (!involved) netBb = preflopNet(committed, hero, "villain");
+    else if (round.allinBoard && round.allinCards) {
+      const sd = judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
+      netBb = preflopNet(committed, hero, sd?.winner ?? "tie");
+    }
+  } else if (o?.kind === "flop") {
+    if (o.opener !== hero && o.caller !== hero) {
+      netBb = preflopNet(committed, hero, "villain");
+    } else if (round.post && round.spot && round.deal && round.post.node === null) {
+      const { heroPlayer, hands } = round.deal;
+      const last = round.post.history.at(-1);
+      let winner: Winner;
+      if (last?.action.kind === "fold") {
+        winner = last.player === heroPlayer ? "villain" : "hero";
+      } else {
+        // 런아웃이 보드마다 정해져 있어 중간에 올인으로 끝나도 다섯 장으로 가린다.
+        const h = hands[heroPlayer];
+        const v = hands[1 - heroPlayer];
+        winner =
+          judge(boardAt(round.spot, "river"), [h.slice(0, 2), h.slice(2, 4)], [v.slice(0, 2), v.slice(2, 4)])
+            ?.winner ?? "tie";
+      }
+      const startPot = Object.values(committed).reduce((a, b) => a + b, 0);
+      netBb = postflopNet(startPot, committed[hero] ?? 0, round.post.history, heroPlayer, winner);
+    }
+  }
+  return { netBb, lossBb, graded: graded.length };
+}
+
+export default function HandTrainer({
+  seat,
+  run: runMode,
+}: {
+  seat?: string | null;
+  /**
+   * 토너먼트 런 안에서 칠 때. 판이 끝날 때마다 결과를 넘기고, 몇 판마다 멈추는
+   * 회고 대신 런이 자기 요약을 보여준다. header는 헤더 오른쪽 자리에 들어간다.
+   */
+  run?: { onHandDone: (o: HandOutcome) => void; header: ReactNode };
+}) {
   const [entries, setEntries] = useState<SpotEntry[] | null>(null);
   const [round, setRound] = useState<Round | null>(() => freshRound(seat, currentSkills()));
   const [phase, setPhase] = useState<Phase>("preflop");
@@ -269,6 +330,12 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [sweptKey, setSweptKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** 이번에 앉아서 친 몫. 몇 판마다 멈춰서 보여준다. */
+  // 판 진행 이펙트는 runMode를 ref로 읽는다. 의존성에 넣으면 런 상태가 바뀌어
+  // 부모가 다시 그릴 때마다 이펙트가 다시 돌아 진행 중인 타이머가 처음부터 센다.
+  const runRef = useRef(runMode);
+  useEffect(() => {
+    runRef.current = runMode;
+  });
   const [run, setRun] = useState<{ hands: number; decisions: RunDecision[] }>({
     hands: 0,
     decisions: [],
@@ -314,6 +381,11 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       newRound();
       return;
     }
+    if (runMode) {
+      runMode.onHandDone(handOutcome(round, decisions));
+      newRound();
+      return;
+    }
     const rows = toRunDecisions(decisions, round.heroSeat, round.hands[round.heroSeat]);
     const hands = run.hands + 1;
     setRun({ hands, decisions: [...run.decisions, ...rows] });
@@ -323,7 +395,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       return;
     }
     newRound();
-  }, [round, decisions, run, newRound]);
+  }, [round, decisions, run, newRound, runMode]);
 
   useEffect(() => {
     // 3벳 올인 뒷자리의 EV는 승률표로 낸다. 받기 전에 딜된 판은 그 자리가 접는다.
@@ -436,7 +508,11 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     if (outcome.kind !== "flop" || !heroInFlop) {
       // 히어로가 한 번도 고르지 못한 판은 보여줄 것이 없다. 바로 다시 돌린다.
       if (decisions.length === 0) {
-        const t = window.setTimeout(newRound, 700);
+        const t = window.setTimeout(() => {
+          // 고를 것 없이 끝난 판(BB 워크)도 런에서는 칩이 오간다.
+          runRef.current?.onHandDone(handOutcome(round, decisions));
+          newRound();
+        }, 700);
         timers.current.push(t);
         return () => window.clearTimeout(t);
       }
@@ -585,7 +661,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     phase,
     entries,
     villainSeat,
-    decisions.length,
+    decisions,
     heroInFlop,
     newRound,
   ]);
@@ -871,7 +947,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           {street} · {heroSeat}
         </div>
         <div className="gw-num text-[11px] text-[var(--gw-text-muted)]">
-          {SEATS_DATA.stackBb}bb · 앤티 {SEATS_DATA.anteBb}
+          {runMode ? runMode.header : `${SEATS_DATA.stackBb}bb · 앤티 ${SEATS_DATA.anteBb}`}
         </div>
       </header>
 

@@ -20,6 +20,9 @@ const HAND_SEATS = seatNames(9);
  * 색이 의미를 나르지 않으면서 브랜드 팔레트만 망가뜨린다. 여기서 색은 신호
  * 전용이다 — 지금 고른 것, 지금 차례, 이만큼 손해.
  */
+/** 메인 게임을 위에 둔다. 나머지는 MODES 순서 그대로. */
+const MODE_ORDER = (id: ModeId) => (id === "hand" ? 0 : id === "run" ? 1 : 2);
+
 const MODE_ICON: Record<ModeId, React.ReactNode> = {
   pushfold: (
     <>
@@ -50,6 +53,14 @@ const MODE_ICON: Record<ModeId, React.ReactNode> = {
     <>
       <path d="M3 19.5h18" />
       <path d="M4.5 16V12M9.5 16V8.5M14.5 16v-6M19.5 16V5" />
+    </>
+  ),
+  // 트로피 — 한 판이 아니라 한 경기를 끝까지 간다.
+  run: (
+    <>
+      <path d="M7.5 4.5h9v4.5a4.5 4.5 0 0 1-9 0z" />
+      <path d="M7.5 6H4.5a3 3 0 0 0 3 3.75M16.5 6h3a3 3 0 0 1-3 3.75" />
+      <path d="M12 13.5V17M8.5 20h7M10 17h4" />
     </>
   ),
   icm: (
@@ -125,7 +136,7 @@ export default function Menu({ onStart }: { onStart: (scenario: Scenario) => voi
               메인 게임인 한 판 전체를 맨 위에 둔다. */}
           {[...MODES]
             .filter((m) => m.available)
-            .sort((a, b) => Number(b.id === "hand") - Number(a.id === "hand"))
+            .sort((a, b) => MODE_ORDER(a.id) - MODE_ORDER(b.id))
             .map((info) => {
             const selected = mode === info.id && info.available;
             const expanded = openMode === info.id && info.available;
