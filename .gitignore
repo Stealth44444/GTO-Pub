@@ -60,3 +60,7 @@ public/postflop/*-sb/
 scripts/data/nn/
 scripts/data/nn-run.log
 scripts/data/chain30.log
+# 깊이별 파이프라인 상태와 보드(보드는 Storage에만 올린다)
+scripts/data/pipeline-status-*.json
+scripts/data/boards-status-*.json
+public/postflop-*/
