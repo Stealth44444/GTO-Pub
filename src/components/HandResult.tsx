@@ -17,18 +17,12 @@ import WhyJam from "./WhyJam";
 export default function HandResult({
   decisions,
   handCode,
-  note,
-  showdown,
   caveat,
   onNext,
 }: {
   decisions: Decision[];
   /** 히어로가 받은 패. 근거 숫자를 계산할 때 쓴다. */
   handCode: string;
-  /** 핸드가 어떻게 끝났는지 한 줄. */
-  note: string;
-  /** 끝까지 갔다면 누가 무엇으로 이겼는지. */
-  showdown?: React.ReactNode;
   /** 채점 근거의 한계를 밝혀야 할 때. */
   caveat?: string;
   onNext: () => void;
@@ -68,21 +62,12 @@ export default function HandResult({
             </span>
           )}
         </div>
-        {score.totalLossBb > 0 && (
-          <p className="gw-num mt-1.5 text-center text-[12px] text-[var(--gw-text-muted)]">
-            {formatEvLoss(score.totalLossBb)}
-          </p>
-        )}
-        <p className="mt-1 text-center text-[11px] text-[var(--gw-text-muted)]">{note}</p>
-
 
         {caveat && (
           <p className="mt-2 rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-3 py-2 text-center text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
             {caveat}
           </p>
         )}
-
-        {showdown}
 
         {decisions.length > 0 && (
           <DecisionDetail

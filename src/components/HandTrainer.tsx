@@ -9,7 +9,6 @@ import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/l
 import RunRecap from "./RunRecap";
 import { rangeMix, reachWeights } from "@/lib/rangeMix";
 import { buildTableView } from "@/lib/tableView";
-import { judge, type Showdown } from "@/lib/showdown";
 import { dealCombo } from "@/lib/preflopGame";
 import { loadEquity } from "@/lib/equity";
 import {
@@ -642,26 +641,6 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
   }, [view?.closed, roundKey, sweptKey]);
 
   /**
-   * 리버까지 갔으면 누가 이겼는지. 상태가 아니라 파생값이다.
-   * 결과는 참고일 뿐 채점 근거가 아니다 — 좋은 판단이 지는 일은 늘 있다.
-   */
-  const showdown: Showdown | null = useMemo(() => {
-    if (!ending || !round || !shown) return null;
-    if (round.allinBoard && round.allinCards) {
-      return judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
-    }
-    if (!round.post || !round.deal) return null;
-    const { hands, heroPlayer } = round.deal;
-    const hero = hands[heroPlayer];
-    const villain = hands[1 - heroPlayer];
-    return judge(
-      round.post.board,
-      [hero.slice(0, 2), hero.slice(2, 4)],
-      [villain.slice(0, 2), villain.slice(2, 4)],
-    );
-  }, [ending, round, shown]);
-
-  /**
    * 판이 끝나면 상대가 무엇을 들고 있었는지.
    *
    * 접고 끝났어도 보여준다 — 상대가 무엇을 들고 접는지는 승패만큼이나
@@ -1073,51 +1052,10 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         <HandResult
           decisions={decisions}
           handCode={round.hands[round.heroSeat]}
-          note={ending ?? "핸드 종료"}
           caveat={
             phase === "postflop" && heroOutOfRange
               ? "이 패로는 여기까지 오지 않는 게 정답이라, 플랍부터는 비교할 정답이 없습니다."
               : undefined
-          }
-          showdown={
-            villainSeat && villainReveal ? (
-              <div className="mt-3 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-table-header)] px-3.5 py-3">
-                <div className="flex items-center justify-between">
-                  {/* 카드를 깐 판에서만 승패를 말한다. 접은 사람은 넛츠를
-                      들고 있었어도 진 것이라, 패를 비교하는 건 뜻이 없다. */}
-                  <span className="gw-label">
-                    {showdown
-                      ? showdown.winner === "hero"
-                        ? "WIN"
-                        : showdown.winner === "tie"
-                          ? "SPLIT"
-                          : "LOSE"
-                      : "상대 핸드"}
-                  </span>
-                  <span className="gw-label">{showdown ? "쇼다운" : "접고 끝남"}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[13px]">
-                  <span className="text-[var(--gw-text-secondary)]">
-                    나 · {heroSeat} · {round.hands[heroSeat]}
-                  </span>
-                  {showdown && (
-                    <span className="font-semibold text-[var(--gw-text-primary)]">
-                      {showdown.heroHandName}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 flex items-center justify-between text-[13px]">
-                  <span className="text-[var(--gw-text-muted)]">
-                    상대 · {villainSeat} · {round.hands[villainSeat]}
-                  </span>
-                  {showdown && (
-                    <span className="font-semibold text-[var(--gw-text-secondary)]">
-                      {showdown.villainHandName}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : undefined
           }
           onNext={finishHand}
         />
