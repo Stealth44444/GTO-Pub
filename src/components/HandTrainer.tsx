@@ -504,7 +504,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       .then((found) => {
         if (!found && callerIp) throw new Error("no-ip-boards");
         const pool = found?.list ?? entries;
-        const entry = pickSpotEntry(pool, Math.random, round.entry?.file);
+        // 내 두 장과 겹치지 않는 보드만 고른다. 겹치면 패를 다시 뽑아야 해서
+        // 프리플랍에서 보던 카드의 무늬가 플랍에서 바뀐다.
+        const entry = pickSpotEntry(pool, Math.random, round.entry?.file, new Set(round.heroCombo));
         const fit: "exact" | "opener" | "none" = found?.fit ?? "none";
         return loadSpot(entry).then(async (spot) => {
           await settled;
@@ -513,12 +515,14 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
       })
       .then(({ spot, entry, pool, fit }) => {
         if (!alive) return;
-        const board = new Set(spot.flop);
+        // 런아웃이 보드마다 정해져 있으니 턴·리버도 이미 나온 카드로 친다.
+        const board = new Set([...spot.flop, spot.runout.turn, spot.runout.river]);
         // 플랍부터는 SB 쪽에 가까운 자리가 먼저 친다. 그쪽이 OOP다.
         const oopSeat = actsFirst(round.heroSeat, villainSeat);
         const heroPlayer: 0 | 1 = oopSeat === round.heroSeat ? 0 : 1;
 
-        // 처음 받은 두 장을 그대로 들고 간다. 보드와 겹칠 때만 다시 뽑는다.
+        // 처음 받은 두 장을 그대로 들고 간다. 겹치지 않는 보드를 골랐으니 다시
+        // 뽑는 건 겹치지 않는 보드가 하나도 없을 때뿐이다.
         const kept = round.heroCombo.every((c) => !board.has(c)) ? round.heroCombo : null;
         const heroCombo = kept ?? dealCombo(round.hands[round.heroSeat], board, Math.random);
         const blocked = new Set([...board, ...(heroCombo ?? [])]);
@@ -915,7 +919,9 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
             }
             foldedSeats={foldedSeats}
             preflopScript={round.game.steps}
-            revealedSteps={phase === "postflop" ? undefined : revealed}
+            // 포스트플랍에서도 넘긴다. 빼면 테이블이 프리플랍 진행을 0부터 다시 세서,
+            // 플랍이 열리는 순간 낸 칩과 스택이 딜 직후 모습으로 되돌아갔다 바뀐다.
+            revealedSteps={revealed}
             seatActions={view?.actions}
             seatChips={view ? (chipsShown ? view.chips : {}) : undefined}
             collectingChips={

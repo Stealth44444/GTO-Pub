@@ -177,7 +177,15 @@ export function pickSpotEntry(
   entries: SpotEntry[],
   rnd: () => number,
   avoidFile?: string,
+  /** 이미 누군가 쥔 카드. 플랍·턴·리버 어디에도 나오면 안 된다. */
+  avoidCards?: Set<string>,
 ): SpotEntry {
-  const pool = entries.length > 1 ? entries.filter((e) => e.file !== avoidFile) : entries;
+  const clear = avoidCards
+    ? entries.filter(
+        (e) => ![...(e.flop.match(/../g) ?? []), e.turn, e.river].some((c) => avoidCards.has(c)),
+      )
+    : entries;
+  const base = clear.length > 0 ? clear : entries;
+  const pool = base.length > 1 ? base.filter((e) => e.file !== avoidFile) : base;
   return pool[Math.floor(rnd() * pool.length)];
 }
