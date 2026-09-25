@@ -231,6 +231,10 @@ function train(line: string, actions: string[], data: Sample[]): StrategyModel {
 
 function evaluate(model: StrategyModel, data: Sample[], potBb: Map<string, number>) {
   let w = 0, bestOk = 0, gradeOk = 0, bigMiss = 0, evErr = 0, tv = 0, gradeN = 0, pickedOk = 0;
+  // 확신 구간: 예측 손실이 등급 경계에서 MARGIN bb 넘게 떨어진 판단만 채점한다고 칠 때.
+  const MARGIN = Number(process.env.MARGIN ?? 0.05);
+  const BOUNDS = [0.01, 0.05, 0.25, 1.0];
+  let confN = 0, confOk = 0, confBig = 0;
   const rank = (loss: number) => gradeByEvLoss(loss).rank;
   for (const s of data) {
     const pot = potBb.get(s.flop)!;
@@ -250,6 +254,13 @@ function evaluate(model: StrategyModel, data: Sample[], potBb: Map<string, numbe
       const pr = rank(predBest - predEv[a]);
       if (tr === pr) gradeOk += s.weight;
       if (Math.abs(tr - pr) >= 2) bigMiss += s.weight;
+      const predLoss = predBest - predEv[a];
+      const sure = BOUNDS.every((b) => Math.abs(predLoss - b) > MARGIN);
+      if (sure) {
+        confN += s.weight;
+        if (tr === pr) confOk += s.weight;
+        if (Math.abs(tr - pr) >= 2) confBig += s.weight;
+      }
       // 사용자가 실제로 고를 법한 액션(솔버 빈도대로)에서의 일치
       pickedOk += s.weight * s.strat[a] * (tr === pr ? 1 : 0);
       evErr += s.weight * Math.abs(predEv[a] - s.ev[a]);
@@ -264,6 +275,9 @@ function evaluate(model: StrategyModel, data: Sample[], potBb: Map<string, numbe
     두단계이상틀림: +(bigMiss / gradeN * 100).toFixed(1),
     EV평균오차bb: +(evErr / gradeN).toFixed(3),
     전략차이: +(tv / w * 100).toFixed(1),
+    확신_커버리지: +(confN / gradeN * 100).toFixed(1),
+    확신_등급일치: +(confOk / (confN || 1) * 100).toFixed(1),
+    확신_두단계이상틀림: +(confBig / (confN || 1) * 100).toFixed(1),
   };
 }
 
