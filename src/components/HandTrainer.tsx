@@ -12,6 +12,13 @@ import { buildTableView } from "@/lib/tableView";
 import { judge, type Showdown } from "@/lib/showdown";
 import { dealCombo } from "@/lib/preflopGame";
 import { loadEquity } from "@/lib/equity";
+import {
+  acceptSituation,
+  currentSkills,
+  noteLoss,
+  situationKey,
+  type SkillMap,
+} from "@/lib/adaptive";
 import { dealRunout } from "@/lib/runout";
 import { applyAction, startHand, type HandState } from "@/lib/hand";
 import { sampleActionIndex, type Deal } from "@/lib/postflopSpot";
@@ -193,8 +200,12 @@ function obviousFold(turn: NonNullable<GameState["turn"]>): boolean {
   return turn.actions[turn.evBb.indexOf(best)] === "fold" && best - second > 0.5;
 }
 
-function worthPlaying(game: GameState, heroSeat: string): boolean {
-  if (game.turn) return !obviousFold(game.turn) || Math.random() < KEEP_OBVIOUS_FOLD;
+function worthPlaying(game: GameState, heroSeat: string, skills: SkillMap): boolean {
+  if (game.turn) {
+    if (obviousFold(game.turn) && Math.random() >= KEEP_OBVIOUS_FOLD) return false;
+    // 자주 잃는 상황일수록 더 자주 받는다(lib/adaptive.ts).
+    return acceptSituation(skills, situationKey(heroSeat, game.turn.stage), Math.random);
+  }
   const o = game.outcome;
   if (!o) return false;
   if (o.kind === "flop") return o.opener === heroSeat || o.caller === heroSeat;
@@ -205,18 +216,22 @@ function worthPlaying(game: GameState, heroSeat: string): boolean {
   return o.kind === "folded" && o.winner === heroSeat;
 }
 
-function freshRound(fixedSeat?: string | null): Round {
-  const heroSeat =
+function freshRound(fixedSeat: string | null | undefined, skills: SkillMap): Round {
+  // 자리를 정하지 않았으면 다시 돌릴 때마다 자리도 새로 고른다. 그래야 적응형
+  // 딜이 자리 사이에서도 약한 쪽을 더 자주 고를 수 있다.
+  const pickSeat = () =>
     fixedSeat && SEATS.includes(fixedSeat)
       ? fixedSeat
       : SEATS[Math.floor(Math.random() * SEATS.length)];
 
-  // 고를 것이 있는 판이 나올 때까지 다시 돌린다. 뻔한 폴드를 걸러 한 번에
-  // 나올 확률이 절반쯤이라 마흔 번이면 사실상 늘 나온다. 그래도 안 나오면
-  // 마지막 판을 그냥 쓴다 — 무한히 돌리느니 한 판 어색한 편이 낫다.
+  // 고를 것이 있는 판이 나올 때까지 다시 돌린다. 뻔한 폴드와 적응형 무게로
+  // 걸러 한 번에 나올 확률이 1/4쯤이라 예순 번이면 사실상 늘 나온다. 그래도 안
+  // 나오면 마지막 판을 그냥 쓴다 — 무한히 돌리느니 한 판 어색한 편이 낫다.
+  let heroSeat = pickSeat();
   let hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
   let game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
-  for (let tries = 0; tries < 40 && !worthPlaying(game, heroSeat); tries++) {
+  for (let tries = 0; tries < 60 && !worthPlaying(game, heroSeat, skills); tries++) {
+    heroSeat = pickSeat();
     hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
     game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
   }
@@ -241,7 +256,7 @@ function freshRound(fixedSeat?: string | null): Round {
 
 export default function HandTrainer({ seat }: { seat?: string | null }) {
   const [entries, setEntries] = useState<SpotEntry[] | null>(null);
-  const [round, setRound] = useState<Round | null>(() => freshRound(seat));
+  const [round, setRound] = useState<Round | null>(() => freshRound(seat, currentSkills()));
   const [phase, setPhase] = useState<Phase>("preflop");
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -290,7 +305,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
     setPhase("preflop");
     setRevealed(0);
     loggedRef.current = null;
-    setRound(freshRound(seat));
+    setRound(freshRound(seat, currentSkills()));
   }, [clearTimers, seat]);
 
   /**
@@ -770,6 +785,7 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
           ? `vsOpen:${stage.opener}`
           : `vsJam:${stage.jammer}${stage.opener ? `:${stage.opener}` : ""}`,
     );
+    if (decision.lossBb !== null) noteLoss(situationKey(round.heroSeat, stage), decision.lossBb);
     setDecisions((prev) => [
       ...prev,
       // 올인을 마주한 자리에서만 팟 오즈와 승률로 근거를 댈 수 있다.
