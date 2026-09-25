@@ -56,8 +56,7 @@ export default function WhyJam({
 
   return (
     <div className="mt-2.5 rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-3 py-2.5">
-      <span className="gw-label-ko">왜 그런가</span>
-      <div className="mt-1.5 space-y-1">
+      <div className="space-y-1">
         <Row label="더 내야 하는 금액" value={`${odds.toCallBb}bb`} />
         <Row label="판에 깔린 금액" value={`${odds.potBb}bb`} />
         <Row label="본전에 필요한 승률" value={`${odds.needPct}%`} />
@@ -67,19 +66,8 @@ export default function WhyJam({
           color={enough === null ? undefined : enough ? "var(--gw-accent)" : "var(--gw-danger)"}
         />
       </div>
-      {enough !== null && (
-        <p className="mt-2 text-[11px] leading-relaxed text-[var(--gw-text-muted)]">
-          {enough
-            ? `필요한 ${odds.needPct}%보다 ${round1(equityPct! - odds.needPct)}%포인트 높습니다. 콜이 남는 자리입니다.`
-            : `필요한 ${odds.needPct}%에 ${round1(odds.needPct - equityPct!)}%포인트 모자랍니다. 접는 자리입니다.`}
-        </p>
-      )}
     </div>
   );
-}
-
-function round1(v: number): number {
-  return Math.round(v * 10) / 10;
 }
 
 function Row({

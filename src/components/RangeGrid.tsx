@@ -80,10 +80,6 @@ export default function RangeGrid({ view }: { view: RangeView }) {
           )),
         )}
       </div>
-
-      <p className="mt-1.5 text-center text-[10px] text-[var(--gw-text-muted)]">
-        대각선은 포켓페어 · 오른쪽 위 수티드 · 왼쪽 아래 오프수트
-      </p>
     </div>
   );
 }

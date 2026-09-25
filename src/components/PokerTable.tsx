@@ -293,10 +293,7 @@ export default function PokerTable({
               POT {potBb}bb
             </span>
             {sprBb !== undefined && (
-              <span
-                className="text-[var(--gw-accent)]"
-                title="남은 유효스택 ÷ 팟. 작을수록 플랍에서 결정이 빨리 난다."
-              >
+              <span className="text-[var(--gw-accent)]">
                 SPR {sprBb}
               </span>
             )}

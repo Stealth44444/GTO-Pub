@@ -592,10 +592,6 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
   const postHeroTurn = round?.post?.node?.player === round?.deal?.heroPlayer;
-  /** 레인지 밖 핸드로 플랍에 왔는가. 치기는 하되 채점은 못 한다. */
-  const heroOutOfRange = Boolean(
-    round?.deal && round.deal.handIdx[round.deal.heroPlayer] < 0,
-  );
   useEffect(() => {
     if (
       phase !== "postflop" ||
@@ -1058,11 +1054,6 @@ export default function HandTrainer({ seat }: { seat?: string | null }) {
         <HandResult
           decisions={decisions}
           handCode={round.hands[round.heroSeat]}
-          caveat={
-            phase === "postflop" && heroOutOfRange
-              ? "이 패로는 여기까지 오지 않는 게 정답이라, 플랍부터는 비교할 정답이 없습니다."
-              : undefined
-          }
           onNext={finishHand}
         />
       )}

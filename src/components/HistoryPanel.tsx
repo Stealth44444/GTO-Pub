@@ -80,7 +80,7 @@ export default function HistoryPanel() {
       : state.status === "unavailable"
         ? "지금은 기록을 불러올 수 없습니다."
         : played.length === 0
-          ? "아직 기록이 없습니다. 한 판 연습하면 여기에 쌓입니다."
+          ? "아직 기록이 없습니다."
           : null;
 
   if (state.status !== "ready" || empty) {

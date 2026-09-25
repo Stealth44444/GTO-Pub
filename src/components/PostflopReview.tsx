@@ -72,7 +72,7 @@ export default function PostflopReview({
     return (
       <Shell
         spot={spot}
-        body={<Note>이 자리를 다시 세울 수 없습니다. 보드 데이터가 그새 바뀌었습니다.</Note>}
+        body={<Note>이 판은 다시 볼 수 없습니다.</Note>}
         onNext={onNext}
       />
     );
