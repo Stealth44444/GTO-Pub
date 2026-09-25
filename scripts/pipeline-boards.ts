@@ -19,11 +19,12 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
+import { flopChips, withDepth } from "./game.ts";
 
 const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter.exe";
-const SEATS_FILE = "src/data/preflop-seats.json";
-const OUT_ROOT = "public/postflop";
-const STATUS = "scripts/data/boards-status.json";
+const SEATS_FILE = withDepth("src/data/preflop-seats.json");
+const OUT_ROOT = withDepth("public/postflop");
+const STATUS = withDepth("scripts/data/boards-status.json");
 const FLOOR = process.env.FLOOR ?? "0.005";
 const RUNOUTS_PER_FLOP = Number(process.env.RUNOUTS ?? 2);
 
@@ -48,21 +49,6 @@ const BUCKETS = [
   { name: "middle-sb", opener: "HJ", caller: "SB" },
   { name: "late-sb", opener: "BTN", caller: "SB" },
 ].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
-
-/**
- * 플랍 시점의 팟과 유효 스택(칩, 1칩 = 0.1bb). 20bb, BB 앤티 1bb, 2.5bb 오픈.
- *
- *   BB 콜: 오픈 2.5 + 콜 2.5 + 죽은 SB 0.5 + 앤티 1 = 6.5 / BB는 앤티까지 내서 16.5
- *   SB 콜: 오픈 2.5 + 콜 2.5 + 죽은 BB 1 + 앤티 1   = 7.0 / 17.5
- *   그 밖: 오픈 2.5 + 콜 2.5 + 죽은 SB 0.5 + BB 1 + 앤티 1 = 7.5 / 17.5
- *
- * 팟을 BB 콜 기준으로 두면 SPR이 틀려 전략이 통째로 달라진다.
- */
-function potAndStack(caller: string): { pot: number; stack: number } {
-  if (caller === "BB") return { pot: 65, stack: 165 };
-  if (caller === "SB") return { pot: 70, stack: 175 };
-  return { pot: 75, stack: 175 };
-}
 
 /** 플랍에서 콜러가 먼저 치는가. 블라인드만 오프너보다 앞선다. */
 function callerIsOop(caller: string): boolean {
@@ -200,7 +186,7 @@ for (const bucket of BUCKETS) {
   const openStr = rangeString(openRange, seatsData.hands);
   const callStr = rangeString(callRange, seatsData.hands);
   const [oop, ip] = callerIsOop(bucket.caller) ? [callStr, openStr] : [openStr, callStr];
-  const { pot, stack } = potAndStack(bucket.caller);
+  const { pot, stack } = flopChips(bucket.opener, bucket.caller);
   const dir = `${OUT_ROOT}/${bucket.name}`;
   mkdirSync(dir, { recursive: true });
 

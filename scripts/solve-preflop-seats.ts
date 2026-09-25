@@ -20,8 +20,9 @@
 // 접는 것으로 본다 — 멀티웨이 팟의 포스트플랍 데이터가 없어서이고, 단순화다.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ANTE_BB, OPEN_TO_BB, STACK_BB, withDepth } from "./game.ts";
 
-const OUT = "src/data/preflop-seats.json";
+const OUT = withDepth("src/data/preflop-seats.json");
 
 type EquityTable = { hands: string[]; equity: number[] };
 type FlopValues = {
@@ -31,7 +32,12 @@ type FlopValues = {
 };
 
 const eq = JSON.parse(readFileSync("scripts/data/equity.json", "utf8")) as EquityTable;
-const flopRaw = JSON.parse(readFileSync("src/data/preflop-flopev.json", "utf8")) as FlopValues;
+// 기본 플랍 EV. 20bb에는 예전부터 있던 BTN-BB 표가 있고, 다른 깊이는 구간 파이프라인이
+// 만든 late 구간(BTN 오픈) 표를 기본으로 쓴다.
+const DEFAULT_FLOPEV = existsSync(withDepth("src/data/preflop-flopev.json"))
+  ? withDepth("src/data/preflop-flopev.json")
+  : withDepth("src/data/flopev-late.json");
+const flopRaw = JSON.parse(readFileSync(DEFAULT_FLOPEV, "utf8")) as FlopValues;
 
 /**
  * 자리마다 오픈 레인지가 다르니 플랍에서의 값도 달라야 한다. 이른 자리의 좁은
@@ -52,7 +58,7 @@ const BUCKET_OF: Record<string, string> = {
 };
 
 function loadBucket(name: string): FlopValues | null {
-  const path = `src/data/flopev-${name}.json`;
+  const path = withDepth(`src/data/flopev-${name}.json`);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf8")) as FlopValues;
 }
@@ -96,9 +102,9 @@ function evTableFor(seat: string): [number[], number[]] {
 let FLOP_EV: [number[], number[]] = DEFAULT_EV;
 
 const SEATS = ["UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN", "SB", "BB"];
-const STACK = 20;
-const ANTE = 1;
-const OPEN = (flopRaw.startingPotBb - 0.5 - ANTE) / 2; // 2.5
+const STACK = STACK_BB;
+const ANTE = ANTE_BB;
+const OPEN = OPEN_TO_BB;
 const posted = (seat: string) => (seat === "BB" ? 1 + ANTE : seat === "SB" ? 0.5 : 0);
 const DEAD = 0.5 + (1 + ANTE); // SB + BB + 앤티
 

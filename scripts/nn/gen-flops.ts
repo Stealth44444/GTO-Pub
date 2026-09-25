@@ -12,13 +12,15 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { flopChips, withDepth } from "../game.ts";
 
 const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter";
-const OUT = "scripts/data/nn/flops";
+const OUT = withDepth("scripts/data/nn/flops");
 const TMP = "scripts/data/nn/tmp";
 const COUNT = Number(process.env.FLOPS ?? 300);
 const SEED = Number(process.env.SEED ?? 20260925);
 const LINES = ["", "check"];
+const CHIPS = flopChips("BTN", "BB");
 
 type Seats = {
   hands: string[];
@@ -92,8 +94,8 @@ for (const [i, flop] of flops.entries()) {
       "--runouts", anyRunout(flop),
       "--outdir", TMP,
       "--tag", "nn",
-      "--pot", "65",
-      "--stack", "165",
+      "--pot", String(CHIPS.pot),
+      "--stack", String(CHIPS.stack),
       "--oop-range", oop,
       "--ip-range", ip,
     ],

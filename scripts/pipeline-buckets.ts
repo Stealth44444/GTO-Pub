@@ -22,16 +22,20 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { flopChips, withDepth } from "./game.ts";
 
 const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter.exe";
-const SEATS_FILE = "src/data/preflop-seats.json";
-const STATUS = "scripts/data/pipeline-status.json";
+// 이 깊이의 프리플랍 풀이가 아직 없으면 20bb 풀이의 레인지에서 출발한다. 파이프라인이
+// 플랍 EV를 구한 뒤 프리플랍을 다시 풀어 이 깊이의 파일을 새로 만든다.
+const SEATS_FILE = existsSync(withDepth("src/data/preflop-seats.json"))
+  ? withDepth("src/data/preflop-seats.json")
+  : "src/data/preflop-seats.json";
+const STATUS = withDepth("scripts/data/pipeline-status.json");
 const TARGET_PCT = process.env.TARGET_PCT ?? "0.5";
 const FLOP_COUNT = Number(process.env.FLOPS ?? 60);
 
 // 포스트플랍 스팟과 같은 게임 조건.
-const POT_CHIPS = 65;
-const STACK_CHIPS = 165;
+
 
 /**
  * 오프너 구간. 각 구간의 대표 자리를 하나 골라 그 자리의 오픈 레인지와,
@@ -154,7 +158,8 @@ for (const bucket of BUCKETS) {
     continue;
   }
 
-  const dir = `scripts/data/flopev-${bucket.name}`;
+  const dir = withDepth(`scripts/data/flopev-${bucket.name}`);
+  const { pot, stack } = flopChips(bucket.opener, bucket.caller);
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/index.json`, JSON.stringify({ flops: sample }, null, 1));
 
@@ -177,8 +182,8 @@ for (const bucket of BUCKETS) {
         "--target-pct", TARGET_PCT,
         "--outdir", dir,
         "--tag", "ev",
-        "--pot", String(POT_CHIPS),
-        "--stack", String(STACK_CHIPS),
+        "--pot", String(pot),
+        "--stack", String(stack),
         "--oop-range", oop,
         "--ip-range", ip,
       ],
@@ -196,7 +201,7 @@ for (const bucket of BUCKETS) {
   execFileSync(
     "node",
     ["--experimental-strip-types", "scripts/build-preflop-values.ts"],
-    { stdio: "inherit", env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: `src/data/flopev-${bucket.name}.json` } },
+    { stdio: "inherit", env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: withDepth(`src/data/flopev-${bucket.name}.json`) } },
   );
   setStatus(
     `${bucket.name} 완료`,

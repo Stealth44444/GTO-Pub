@@ -15,11 +15,12 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { DEPTH_SUFFIX, withDepth } from "./game.ts";
 
-const ROOT = "public/postflop";
+const ROOT = withDepth("public/postflop");
 const BUCKET = "postflop";
 /** 버킷 안의 경로 접두사. 형식이 바뀌면 올려서 옛 앱이 새 파일을 받지 않게 한다. */
-const PREFIX = "v1";
+const PREFIX = `v1${DEPTH_SUFFIX}`;
 const PARALLEL = 3;
 /** 5xx(게이트웨이의 일시 오류)는 몇 번 다시 보낸다. */
 const RETRIES = 4;
