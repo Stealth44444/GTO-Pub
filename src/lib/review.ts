@@ -201,9 +201,12 @@ export function pickAllReviewSpots(
   data: SeatsData,
   limit = 20,
 ): AnyReviewSpot[] {
+  // 지금 치는 게임과 스택 깊이가 같은 기록만 복습한다. 20bb 판을 30bb 레인지로
+  // 다시 채점하면 정답이 뒤바뀌고, 포스트플랍 판은 보드 폴더가 달라 열 수도 없다.
+  const same = attempts.filter((a) => a.stackBb === data.stackBb);
   const all: AnyReviewSpot[] = [
-    ...pickReviewSpots(attempts, data, limit),
-    ...pickPostflopSpots(attempts, limit),
+    ...pickReviewSpots(same, data, limit),
+    ...pickPostflopSpots(same, limit),
   ];
   return all
     .sort((x, y) => y.misses * y.lastLossBb - x.misses * x.lastLossBb)

@@ -174,5 +174,14 @@ function attempt(over: Partial<Attempt>): Attempt {
   check("상황 이름을 푼다", parseStage("vsOpen:UTG", "BB")?.kind === "vsOpen");
 }
 
+{
+  // 스택 깊이가 다른 기록은 복습에 들어오지 않는다. 다른 깊이의 레인지로 다시
+  // 채점하면 정답이 바뀌고, 포스트플랍 보드는 폴더가 달라 열리지 않는다.
+  const deeper = attempt({ stackBb: DATA.stackBb + 10 });
+  const same = attempt({});
+  check("다른 깊이의 기록은 빠진다", pickAllReviewSpots([deeper], DATA).length === 0);
+  check("같은 깊이의 기록은 남는다", pickAllReviewSpots([same], DATA).length === 1);
+}
+
 console.log(`통과 ${pass}, 실패 ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
