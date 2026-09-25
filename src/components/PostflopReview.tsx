@@ -6,8 +6,7 @@ import { makeDecision } from "@/lib/decisions";
 import { fromNode } from "@/lib/rangeGrid";
 import type { PostflopReviewSpot } from "@/lib/review";
 import { STREET_KO } from "@/lib/review";
-import seatsRaw from "@/data/preflop-seats.json";
-import type { SeatsData } from "@/lib/seatGame";
+import { SEATS_DATA } from "@/lib/seatsData";
 import { currentUserId } from "@/lib/session";
 import { loadSpotFile } from "@/lib/spotLibrary";
 import { ACTION_KO } from "@/lib/stats";
@@ -19,7 +18,7 @@ import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
 
-const DATA = seatsRaw as unknown as SeatsData;
+const DATA = SEATS_DATA;
 
 type Loaded =
   | { status: "loading" }

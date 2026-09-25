@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import seatsRaw from "@/data/preflop-seats.json";
-import { actionsAt, evAt, labelFor, type SeatAction, type SeatsData } from "@/lib/seatGame";
+import { SEATS_DATA } from "@/lib/seatsData";
+import { actionsAt, evAt, labelFor, type SeatAction } from "@/lib/seatGame";
 import { fromRanges } from "@/lib/rangeGrid";
 import { ensureGuestUser, logReview } from "@/lib/attempts";
 import { makeDecision } from "@/lib/decisions";
@@ -17,7 +17,7 @@ import RangeGrid from "./RangeGrid";
 import { PanelMessage, PanelScroll } from "./PanelShell";
 import { useAttempts } from "./useAttempts";
 
-const DATA = seatsRaw as unknown as SeatsData;
+const DATA = SEATS_DATA;
 
 /**
  * 틀렸던 스팟을 다시 물어본다.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import seatsRaw from "@/data/preflop-seats.json";
+import { SEATS_DATA } from "@/lib/seatsData";
 import { actionEvFor, actionLabel, type SolvedSpot } from "@/lib/tree";
 import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
@@ -30,7 +30,6 @@ import {
   startGame,
   type GameState,
   type SeatAction,
-  type SeatsData,
 } from "@/lib/seatGame";
 import {
   loadSpot,
@@ -47,7 +46,6 @@ import HandResult from "./HandResult";
 import PokerTable from "./PokerTable";
 import { dealDurationMs } from "./BoardCard";
 
-const SEATS_DATA = seatsRaw as unknown as SeatsData;
 const TABLE_SIZE = SEATS_DATA.tableSize;
 
 /**

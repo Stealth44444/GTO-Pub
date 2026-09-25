@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import seatsRaw from "@/data/preflop-seats.json";
+import { SEATS_DATA } from "@/lib/seatsData";
 import { LESSONS, findLesson, type LessonBlock } from "@/lib/lessons";
 import { openWidths } from "@/lib/rangeWidth";
 import { sprCases } from "@/lib/spr";
-import type { SeatsData } from "@/lib/seatGame";
 
-const DATA = seatsRaw as unknown as SeatsData;
+const DATA = SEATS_DATA;
 
 function Block({ block }: { block: LessonBlock }) {
   if (block.kind === "text") {

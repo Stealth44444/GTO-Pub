@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import seatsRaw from "@/data/preflop-seats.json";
+import { SEATS_DATA } from "@/lib/seatsData";
 import { equityVsRange, loadEquity } from "@/lib/equity";
-import type { SeatsData } from "@/lib/seatGame";
 import { jamPotOdds, jamRangeOf } from "@/lib/why";
 
-const DATA = seatsRaw as unknown as SeatsData;
+const DATA = SEATS_DATA;
 
 /**
  * 올인에 대한 콜의 근거 숫자.

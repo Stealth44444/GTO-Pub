@@ -4,6 +4,7 @@
 // 실제로 칠 보드만 내려받는다. 다음 판에 쓸 보드는 미리 받아둬서, 판이
 // 끝나고 다음 판을 시작할 때 기다리지 않게 한다.
 
+import { BOARD_PREFIX } from "./seatsData";
 import type { SolvedSpot } from "./tree";
 
 export type SpotEntry = {
@@ -22,7 +23,7 @@ export type SpotEntry = {
 // NEXT_PUBLIC_POSTFLOP_BASE=/postflop.
 const BASE =
   process.env.NEXT_PUBLIC_POSTFLOP_BASE ||
-  "https://aenvvzxtafuwqybwdiqw.supabase.co/storage/v1/object/public/postflop/v1";
+  `https://aenvvzxtafuwqybwdiqw.supabase.co/storage/v1/object/public/postflop/${BOARD_PREFIX}`;
 
 let index: SpotEntry[] | null = null;
 let indexPending: Promise<SpotEntry[]> | null = null;
