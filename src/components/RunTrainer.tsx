@@ -174,7 +174,13 @@ function RunSummary({
         <button
           type="button"
           onClick={onAgain}
-          className="rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
+          // 리바이가 남아 있으면 그게 다음 행동이다. 채운 버튼이 둘이면 어느 쪽이
+          // 이어 가는 것인지 읽히지 않는다.
+          className={`rounded-[var(--gw-radius-control)] py-3.5 text-[15px] font-bold transition active:scale-[0.98] ${
+            canRebuy
+              ? "border border-[var(--gw-border)] text-[var(--gw-text-secondary)]"
+              : "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
+          }`}
         >
           다시 시작
         </button>
