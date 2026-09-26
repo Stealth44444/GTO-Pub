@@ -67,6 +67,38 @@ function betterThanFold(ev: number[] | undefined, fold: number, hands: string[],
 
 const rangeString = (hands: string[]) => hands.map((h) => `${h}:1`).join(",");
 
+/** build-preflop-values.ts가 쓰는 표. flopEvBb[0]이 OOP, [1]이 IP. */
+type FlopTable = {
+  hands: string[];
+  startingPotBb: number;
+  flopEvBb: [(number | null)[], (number | null)[]];
+  [key: string]: unknown;
+};
+
+/**
+ * 바퀴별 표의 평균. 핸드마다 값이 있는 바퀴만 평균낸다 — 어느 바퀴의 레인지에
+ * 없던 핸드는 그 바퀴에 값이 없다(null). 핸드 순서가 다르면 이름으로 맞춘다.
+ */
+function averageTables(tables: FlopTable[]): FlopTable {
+  const last = tables[tables.length - 1];
+  const flopEvBb = [0, 1].map((p) =>
+    last.hands.map((h) => {
+      let sum = 0;
+      let n = 0;
+      for (const t of tables) {
+        const i = t.hands.indexOf(h);
+        const v = i < 0 ? null : t.flopEvBb[p][i];
+        if (v !== null && v !== undefined) {
+          sum += v;
+          n += 1;
+        }
+      }
+      return n === 0 ? null : Math.round((sum / n) * 1000) / 1000;
+    }),
+  ) as FlopTable["flopEvBb"];
+  return { ...last, flopEvBb, rounds: tables.length };
+}
+
 function done(file: string): boolean {
   if (!existsSync(file)) return false;
   try {
@@ -155,14 +187,20 @@ for (let round = 1; round <= ROUNDS; round++) {
         setStatus(`${round}바퀴 ${b.name}`, `${i + 1}/${sample.length} · ${((Date.now() - started) / 60000).toFixed(1)}분`);
       }
     });
+    // 이 바퀴의 표는 바퀴 폴더에 두고, 풀이가 읽는 표는 지금까지 모든 바퀴의
+    // 평균으로 쓴다. 마지막 바퀴 표만 쓰면 3벳 레인지가 바퀴마다 양쪽으로 튄다
+    // (BB의 BTN 3벳 11.8% → 5.6% → 11.7%, 2026-09-27). 바퀴마다 앞 바퀴에 최선
+    // 대응하기 때문이다. 평균을 쓰면 피셔스 플레이처럼 가운데로 모인다.
     execFileSync("node", ["--experimental-strip-types", "scripts/build-preflop-values.ts"], {
       stdio: "ignore",
-      env: {
-        ...process.env,
-        FLOPEV_DIR: dir,
-        FLOPEV_OUT: withDepth(`src/data/flopev3-${b.name}.json`),
-      },
+      env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: `${dir}/table.json` },
     });
+    const tables: FlopTable[] = [];
+    for (let r = 1; r <= round; r++) {
+      const path = `${withDepth(`scripts/data/flopev3-${b.name}`)}/r${r}/table.json`;
+      if (existsSync(path)) tables.push(JSON.parse(readFileSync(path, "utf8")) as FlopTable);
+    }
+    writeFileSync(withDepth(`src/data/flopev3-${b.name}.json`), JSON.stringify(averageTables(tables)));
     setStatus(
       `${round}바퀴 ${b.name} 완료`,
       `3벳 ${tbHands.length} · 콜 ${callHands.length}핸드${reused ? ` · 플랍 ${reused}개 재사용` : ""}`,
