@@ -363,6 +363,8 @@ export default function HandTrainer({
     data?: SeatsData;
     /** 스택이 칠 깊이보다 적을 때 그 스택. 이만큼까지만 오간다. */
     capBb?: number;
+    /** 히어로의 실제 스택(지금 레벨 bb). 좌석에 이걸 적는다. */
+    stackBb?: number;
   };
 }) {
   const data = runMode?.data ?? SEATS_DATA;
@@ -1020,6 +1022,9 @@ export default function HandTrainer({
             tableSize={TABLE_SIZE}
             heroPosition={heroSeat}
             stackBb={data.stackBb}
+            heroStackBb={
+              runMode?.stackBb === undefined ? undefined : Math.round(runMode.stackBb * 10) / 10
+            }
             anteBb={data.anteBb}
             shoverPosition={null}
             awaitingAction={

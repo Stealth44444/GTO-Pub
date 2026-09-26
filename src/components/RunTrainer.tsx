@@ -104,6 +104,7 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
         }`,
         data,
         capBb: stakeCap(state, depth),
+        stackBb: exactStackBb(state),
       }}
     />
   );
