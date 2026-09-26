@@ -265,6 +265,63 @@ for (const seat of ["UTG", "CO", "BTN"]) {
   setEquityTable(null);
 }
 
+console.log("상대 BB의 응답");
+{
+  // BB는 먼저 여는 스팟이 없어 데이터에 자리가 없다. 그래도 오프너의 데이터로
+  // 응답해야 한다. AA로 BTN 오픈에 접는 BB는 없다.
+  const rnd = lcg(7);
+  let folds = 0;
+  for (let i = 0; i < 200; i++) {
+    if (sampleAction(data, "BB", { kind: "vsOpen", opener: "BTN" }, "AA", rnd) === "fold") folds++;
+  }
+  expect(folds, 0, "BB는 AA로 BTN 오픈에 접지 않는다");
+
+  let calls = 0;
+  for (let i = 0; i < 200; i++) {
+    if (sampleAction(data, "BB", { kind: "vsJam", jammer: "BTN", iOpened: false }, "AA", rnd) === "call") calls++;
+  }
+  expect(calls, 200, "BB는 AA로 BTN 올인에 콜한다");
+}
+
+console.log("올인에 콜한 자리의 투입");
+{
+  // 올인에 콜하면 스택 전부를 낸다. 오픈 콜 금액(2.5 + 앤티)으로 적으면 팟 표시와
+  // 런의 칩 정산이 둘 다 틀린다.
+  const r = lcg(5);
+  let checked = 0;
+  let wrong = 0;
+  for (let n = 0; n < 3000; n++) {
+    const hands = Object.fromEntries(SEATS.map((s) => [s, data.hands[Math.floor(r() * 169)]]));
+    const g = startGame(data, SEATS, "__nobody__", hands, r);
+    if (g.outcome?.kind !== "allin") continue;
+    for (const seat of [g.outcome.a, g.outcome.b]) {
+      const last = [...g.steps].reverse().find((st) => st.seat === seat);
+      checked++;
+      if (last?.committedBb !== data.stackBb) wrong++;
+    }
+  }
+  expect(checked > 0, true, "올인 대결이 나온다");
+  expect(wrong, 0, "올인 대결의 두 자리는 모두 스택 전부를 낸다");
+
+  // 히어로가 열고 3벳 올인에 접으면 오픈액은 팟에 남는다.
+  const r2 = lcg(9);
+  let heroFolds = 0;
+  let lost = 0;
+  for (let n = 0; n < 20000 && heroFolds < 20; n++) {
+    const hands = Object.fromEntries(SEATS.map((s) => [s, data.hands[Math.floor(r2() * 169)]]));
+    const g = startGame(data, SEATS, "CO", hands, r2);
+    if (g.turn?.stage.kind !== "firstIn") continue;
+    const opened = applyHeroAction(data, g, "open", r2);
+    if (opened.turn?.stage.kind !== "vsJam") continue;
+    const folded = applyHeroAction(data, opened, "fold", r2);
+    heroFolds++;
+    const last = [...folded.steps].reverse().find((st) => st.seat === "CO");
+    if (last?.committedBb !== data.openToBb) lost++;
+  }
+  expect(heroFolds > 0, true, "히어로가 열고 올인을 맞는 판이 나온다");
+  expect(lost, 0, "열고 접은 히어로의 오픈액은 남는다");
+}
+
 console.log(`
 통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);

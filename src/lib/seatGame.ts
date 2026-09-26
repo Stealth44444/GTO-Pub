@@ -184,9 +184,13 @@ function freqAt(
 ): number[] {
   const me = data.seats[seat];
   const get = (r?: Record<string, number>) => (r ? (r[hand] ?? 0) : 0);
-  if (!me) return actionsAt(stage).map((_, k) => (k === 0 ? 1 : 0));
+  // 자기 데이터가 없으면 접는다. 단 자기 데이터를 읽는 상황에서만이다 — 오픈·올인
+  // 대응 빈도는 오프너·올인한 자리의 데이터에 들어 있다. BB는 먼저 여는 스팟이
+  // 없어 자기 항목이 없는데, 여기서 먼저 접어 버리면 AA로도 응답하지 않는다.
+  const foldOnly = () => actionsAt(stage).map((_, k) => (k === 0 ? 1 : 0));
 
   if (stage.kind === "firstIn") {
+    if (!me) return foldOnly();
     const open = get(me.open);
     const jam = get(me.openJam);
     return [Math.max(0, 1 - open - jam), open, jam];
@@ -198,6 +202,7 @@ function freqAt(
     return [Math.max(0, 1 - call - jam), call, jam];
   }
   if (stage.iOpened) {
+    if (!me) return foldOnly();
     const call = get(me.callJam?.[stage.jammer]);
     return [Math.max(0, 1 - call), call];
   }
@@ -265,12 +270,18 @@ const posted = (data: SeatsData, seats: string[], seat: string) =>
       ? 0.5
       : 0;
 
+/**
+ * @param facingJam 올인을 마주하고 있는가. 그때의 콜은 오픈 콜이 아니라 스택
+ *   전부다 — 이걸 모르면 올인에 콜한 자리가 2.5bb만 낸 것으로 적혀, 팟 표시와
+ *   런의 칩 정산이 둘 다 틀린다.
+ */
 function stepFor(
   data: SeatsData,
   seats: string[],
   seat: string,
   action: SeatAction,
   keptBb?: number,
+  facingJam = false,
 ): PreflopStep {
   const ante = seat === seats[seats.length - 1] ? data.anteBb : 0;
   if (action === "fold") {
@@ -280,6 +291,7 @@ function stepFor(
   }
   if (action === "jam") return { seat, kind: "allin", committedBb: data.stackBb };
   if (action === "open") return { seat, kind: "raise", committedBb: data.openToBb + ante };
+  if (facingJam) return { seat, kind: "call", committedBb: data.stackBb };
   return { seat, kind: "call", committedBb: data.openToBb + ante };
 }
 
@@ -353,7 +365,7 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
 
     const stage = stageFor(s, seat);
     const action = sampleAction(data, seat, stage, s.hands[seat], rnd);
-    s.steps.push(stepFor(data, s.seats, seat, action));
+    s.steps.push(stepFor(data, s.seats, seat, action, undefined, Boolean(s.jammer)));
     s.cursor += 1;
 
     if (action === "jam") {
@@ -395,7 +407,7 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
   if (s.jammer && s.opener && s.opener !== s.heroSeat) {
     const openerStage: Stage = { kind: "vsJam", jammer: s.jammer, iOpened: true };
     const reply = sampleAction(data, s.opener, openerStage, s.hands[s.opener], rnd);
-    s.steps.push(stepFor(data, s.seats, s.opener, reply, data.openToBb));
+    s.steps.push(stepFor(data, s.seats, s.opener, reply, data.openToBb, true));
     s.turn = null;
     s.outcome =
       reply === "fold"
@@ -441,7 +453,18 @@ export function applyHeroAction(
   rnd: () => number,
 ): GameState {
   if (!state.turn) return state;
-  const s = { ...state, steps: [...state.steps, stepFor(data, state.seats, state.heroSeat, action)] };
+  const stage = state.turn.stage;
+  const facingJam = stage.kind === "vsJam";
+  // 내가 열었다가 올인에 접으면 오픈액은 팟에 남는다. 다른 자리는 advance가
+  // 같은 처리를 한다.
+  const keptBb = facingJam && stage.iOpened ? data.openToBb : undefined;
+  const s = {
+    ...state,
+    steps: [
+      ...state.steps,
+      stepFor(data, state.seats, state.heroSeat, action, keptBb, facingJam),
+    ],
+  };
   s.turn = null;
 
   const wasOpenerAnsweringJam = state.turn.stage.kind === "vsJam" && state.turn.stage.iOpened;
