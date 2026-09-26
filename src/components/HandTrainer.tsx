@@ -310,6 +310,16 @@ function handOutcome(
       const eq = allinEquity(round.allinCards.hero, round.allinCards.villain, [], seeded(round.id));
       evNetBb = blend(eq, preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
     }
+  } else if (o?.kind === "threebetFlop") {
+    const involved = o.opener === hero || o.threeBettor === hero;
+    if (!involved) netBb = preflopNet(committed, hero, "villain");
+    else if (round.allinCards) {
+      // 3벳 팟 플랍은 아직 치지 않는다(보드가 없다). 두 핸드의 승률로 팟을 나눠
+      // 정산한다 — 카드를 깔지 않았으니 운이 끼어들 자리가 없다.
+      const eq = allinEquity(round.allinCards.hero, round.allinCards.villain, [], seeded(round.id));
+      netBb = blend(eq, preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
+      evNetBb = netBb;
+    }
   } else if (o?.kind === "flop") {
     if (o.opener !== hero && o.caller !== hero) {
       netBb = preflopNet(committed, hero, "villain");
@@ -516,8 +526,18 @@ export default function HandTrainer({
       : outcome?.kind === "allin"
         ? outcome.a === round?.heroSeat
           ? outcome.b
-          : outcome.a
-        : null;
+          : outcome.b === round?.heroSeat
+            ? outcome.a
+            : // 내가 접은 뒤 다른 두 자리가 올인했다. 내 판이 아니다 — 여기서
+              // 상대를 잡으면 접은 내 카드로 승패를 보여주게 된다.
+              null
+        : outcome?.kind === "threebetFlop"
+          ? outcome.opener === round?.heroSeat
+            ? outcome.threeBettor
+            : outcome.threeBettor === round?.heroSeat
+              ? outcome.opener
+              : null
+          : null;
 
   const heroSeat = round?.heroSeat ?? SEATS[0];
 
@@ -594,11 +614,13 @@ export default function HandTrainer({
       // 올인이 콜됐으면 보드를 끝까지 깔아 승패를 보여준다.
       let board: string[] | null = null;
       let cards: Round["allinCards"] = null;
-      if (outcome.kind === "allin" && villainSeat) {
+      // 상대 카드는 올인이든 3벳 팟이든 깐다. 보드는 올인일 때만 깐다 — 3벳 팟은
+      // 올인이 아니라(SPR ≈ 1) 무작위 런아웃으로 결판을 흉내 내지 않는다.
+      if ((outcome.kind === "allin" || outcome.kind === "threebetFlop") && villainSeat) {
         const villain = dealCombo(round.hands[villainSeat], new Set(round.heroCombo), Math.random);
         if (villain) {
           cards = { hero: round.heroCombo, villain };
-          board = dealRunout([...round.heroCombo, ...villain], Math.random);
+          if (outcome.kind === "allin") board = dealRunout([...round.heroCombo, ...villain], Math.random);
         }
       }
 
@@ -615,8 +637,9 @@ export default function HandTrainer({
               ? "모두 폴드, 팟 획득"
               : `${outcome.winner} 팟 획득`;
       const t = window.setTimeout(() => {
-        if (board && cards) {
-          setShown(true);
+        if (cards) {
+          // 보드가 있어야(올인) 승패를 말한다. 3벳 팟은 상대 카드만 보여준다.
+          if (board) setShown(true);
           setRound((cur) => (cur ? { ...cur, allinBoard: board, allinCards: cards } : cur));
         }
         setEnding(note);
