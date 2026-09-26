@@ -111,12 +111,16 @@ export function spotIndexReady(): boolean {
 export function loadSpotIndex(): Promise<SpotEntry[]> {
   if (index) return Promise.resolve(index);
   indexPending ??= fetch(`${BASE}/index.json`)
-    .then((res) => {
-      if (!res.ok) throw new Error(`스팟 목록을 받지 못했습니다 (${res.status})`);
-      return res.json() as Promise<{ spots: SpotEntry[] }>;
+    .then(async (res) => {
+      if (res.ok) return ((await res.json()) as { spots: SpotEntry[] }).spots;
+      // 20bb 뒤의 깊이는 기본 목록을 따로 만들지 않는다. 자리 조합마다 세트가
+      // 있으니, 기본(BTN 오픈·BB 콜)은 late 세트가 그대로 그 조건이다.
+      const late = (await loadBuckets()).late;
+      if (late?.length) return late;
+      throw new Error(`스팟 목록을 받지 못했습니다 (${res.status})`);
     })
-    .then((raw) => {
-      index = raw.spots;
+    .then((spots) => {
+      index = spots;
       return index;
     });
   return indexPending;

@@ -4,7 +4,7 @@
 // 컴포넌트마다 JSON을 따로 불러오면 깊이를 바꿀 때 한 곳을 빠뜨리고, 그러면
 // 20bb 레인지로 30bb 판을 채점하는 화면이 남는다. 그래서 한 곳에서만 읽는다.
 
-import seatsRaw from "@/data/preflop-seats.json";
+import seatsRaw from "@/data/preflop-seats-30bb.json";
 import type { SeatsData } from "./seatGame";
 
 export const SEATS_DATA = seatsRaw as unknown as SeatsData;
