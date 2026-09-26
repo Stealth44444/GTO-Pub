@@ -82,6 +82,10 @@ async function uploadOnce(file: string): Promise<void> {
   if (!res.ok) throw new Error(`${file}: ${res.status} ${(await res.text()).slice(0, 200)}`);
 }
 
+// 같은 이름으로 다시 푼 세트(예: FORCE=sb). 이름만 보고 건너뛰면 옛 파일이 남는다.
+const FORCE = (process.env.FORCE ?? "").split(",").filter(Boolean);
+const refresh = (file: string) => FORCE.some((dir) => file.startsWith(`${dir}/`));
+
 let uploaded = 0;
 let skipped = 0;
 const queue = [...files.filter((f) => !isIndex(f)), ...files.filter(isIndex)];
@@ -95,7 +99,7 @@ async function run(list: string[], force: boolean) {
     Array.from({ length: PARALLEL }, async () => {
       while (next < list.length) {
         const file = list[next++];
-        if (!force && (await exists(file))) {
+        if (!force && !refresh(file) && (await exists(file))) {
           skipped += 1;
           continue;
         }
