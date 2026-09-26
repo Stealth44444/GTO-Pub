@@ -107,8 +107,13 @@ export const ACTION_LABEL: Record<SeatAction, string> = {
   call: "콜",
 };
 
-export function actionsAt(stage: Stage): SeatAction[] {
-  if (stage.kind === "firstIn") return ["fold", "open", "jam"];
+/** 이 깊이에 오픈(레이즈)이 있는가. 푸시/폴드 깊이는 openToBb가 0이다. */
+export function canOpen(data: SeatsData): boolean {
+  return data.openToBb > 0;
+}
+
+export function actionsAt(stage: Stage, open = true): SeatAction[] {
+  if (stage.kind === "firstIn") return open ? ["fold", "open", "jam"] : ["fold", "jam"];
   if (stage.kind === "vsOpen") return ["fold", "call", "jam"];
   return ["fold", "call"];
 }
@@ -148,12 +153,13 @@ export function evAt(
   hand: string,
 ): (number | null)[] {
   const i = handIndex(data, hand);
-  if (i < 0) return actionsAt(stage).map(() => null);
+  if (i < 0) return actionsAt(stage, canOpen(data)).map(() => null);
   const me = data.seats[seat];
   const foldEv = -postedOf(data, seat);
 
   if (stage.kind === "firstIn") {
-    return [foldEv, me?.ev?.open?.[i] ?? null, me?.ev?.openJam?.[i] ?? null];
+    const jam = me?.ev?.openJam?.[i] ?? null;
+    return canOpen(data) ? [foldEv, me?.ev?.open?.[i] ?? null, jam] : [foldEv, jam];
   }
   if (stage.kind === "vsOpen") {
     const opener = data.seats[stage.opener];
@@ -187,12 +193,13 @@ function freqAt(
   // 자기 데이터가 없으면 접는다. 단 자기 데이터를 읽는 상황에서만이다 — 오픈·올인
   // 대응 빈도는 오프너·올인한 자리의 데이터에 들어 있다. BB는 먼저 여는 스팟이
   // 없어 자기 항목이 없는데, 여기서 먼저 접어 버리면 AA로도 응답하지 않는다.
-  const foldOnly = () => actionsAt(stage).map((_, k) => (k === 0 ? 1 : 0));
+  const foldOnly = () => actionsAt(stage, canOpen(data)).map((_, k) => (k === 0 ? 1 : 0));
 
   if (stage.kind === "firstIn") {
     if (!me) return foldOnly();
-    const open = get(me.open);
     const jam = get(me.openJam);
+    if (!canOpen(data)) return [Math.max(0, 1 - jam), jam];
+    const open = get(me.open);
     return [Math.max(0, 1 - open - jam), open, jam];
   }
   if (stage.kind === "vsOpen") {
@@ -235,7 +242,7 @@ export function sampleAction(
   hand: string,
   rnd: () => number,
 ): SeatAction {
-  const actions = actionsAt(stage);
+  const actions = actionsAt(stage, canOpen(data));
   return actions[pick(freqAt(data, seat, stage, hand), rnd)];
 }
 
@@ -335,7 +342,7 @@ function stageFor(state: GameState, seat: string): Stage {
 
 function turnFor(data: SeatsData, state: GameState, seat: string): Turn {
   const stage = stageFor(state, seat);
-  return { stage, actions: actionsAt(stage), evBb: evAt(data, seat, stage, state.hands[seat]) };
+  return { stage, actions: actionsAt(stage, canOpen(data)), evBb: evAt(data, seat, stage, state.hands[seat]) };
 }
 
 /**
@@ -351,8 +358,9 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     // 올인이 나왔으면 그 뒤로는 3벳자 이전 자리들도 응답해야 하지만,
     // 여기서는 순서대로 한 바퀴만 돈다. 오프너의 응답은 아래에서 따로 받는다.
     // 아무도 안 열었는데 BB 차례가 왔다면 BB가 그냥 가져간다. BB에게는
-    // "먼저 여는" 선택지가 없다.
-    if (!s.opener && !s.jammer && !data.seats[seat]?.open) {
+    // "먼저 여는" 선택지가 없다. 판정은 자리 순서로 한다 — 오픈 레인지 유무로
+    // 하면 오픈이 없는 푸시/폴드 깊이에서 UTG가 BB로 취급되어 판이 끝난다.
+    if (!s.opener && !s.jammer && seat === s.seats[s.seats.length - 1]) {
       s.turn = null;
       s.outcome = { kind: "folded", winner: seat };
       return s;

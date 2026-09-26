@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   actionsAt,
   applyHeroAction,
+  canOpen,
   evAt,
   labelFor,
   sampleAction,
@@ -320,6 +321,59 @@ console.log("올인에 콜한 자리의 투입");
   }
   expect(heroFolds > 0, true, "히어로가 열고 올인을 맞는 판이 나온다");
   expect(lost, 0, "열고 접은 히어로의 오픈액은 남는다");
+}
+
+console.log("오픈 없는 깊이");
+{
+  // 핸드 두 개짜리 가짜 푸시/폴드 데이터. AA만 올인하고 AA만 콜한다.
+  // ev 배열은 hands 순서: [AA, 72o].
+  const pfSeats: SeatsData["seats"] = {};
+  for (const s of SEATS) {
+    pfSeats[s] = {
+      openJam: s === "BB" ? undefined : { AA: 1 },
+      vsJamCall: Object.fromEntries(SEATS.map((c) => [c, { AA: 1 }])),
+      foldEvBb: 0,
+      ev: {
+        open: [],
+        openJam: [5, -1],
+        vsOpenCall: {},
+        vsOpenJam: {},
+        callJam: {},
+        vsJamCall: Object.fromEntries(SEATS.map((c) => [c, [4, -2]])),
+      },
+    };
+  }
+  const pf: SeatsData = {
+    tableSize: 9,
+    stackBb: 10,
+    anteBb: 1,
+    openToBb: 0,
+    hands: ["AA", "72o"],
+    seats: pfSeats,
+  };
+
+  expect(canOpen(pf), false, "openToBb 0이면 오픈이 없다");
+  expect(canOpen(data), true, "20bb 데이터에는 오픈이 있다");
+  expect(actionsAt({ kind: "firstIn" }, false), ["fold", "jam"], "오픈 없는 첫 진입");
+
+  const g = startGame(pf, SEATS, "UTG", allHands("72o"), always(0.5));
+  expect(g.turn?.actions, ["fold", "jam"], "UTG 첫 진입은 폴드/올인");
+  expect(g.turn?.evBb, [0, -1], "폴드 0, 올인 -1");
+
+  const walk = startGame(pf, SEATS, "BB", allHands("72o"), always(0.5));
+  expect(walk.outcome, { kind: "folded", winner: "BB" }, "다 접으면 BB가 가져간다");
+  expect(walk.turn, null, "BB에게는 고를 것이 없다");
+
+  const hands = allHands("72o");
+  hands.UTG = "AA";
+  const vsJam = startGame(pf, SEATS, "SB", hands, always(0.5));
+  expect(vsJam.turn?.stage, { kind: "vsJam", jammer: "UTG", iOpened: false }, "SB가 UTG 올인을 마주한다");
+  const folded = applyHeroAction(pf, vsJam, "fold", always(0.5));
+  expect(folded.outcome, { kind: "folded", winner: "UTG" }, "SB가 접고 BB도 접으면 UTG");
+  const called = applyHeroAction(pf, vsJam, "call", always(0.5));
+  expect(called.outcome, { kind: "allin", a: "UTG", b: "SB" }, "SB가 콜하면 올인 대결");
+  const callStep = called.steps.find((st) => st.seat === "SB");
+  expect(callStep?.committedBb, 10, "올인에 콜한 SB는 스택 전부를 낸다");
 }
 
 console.log(`
