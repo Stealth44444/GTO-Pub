@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { gradeByEvLoss } from "@/lib/grading";
+import { loadDepthData } from "@/lib/depthLoader";
+import type { SeatsData } from "@/lib/seatGame";
 import {
   applyHand,
+  exactStackBb,
   levelOf,
+  playDepth,
+  RUN_DEPTHS,
   RUN_HANDS,
   stackBb,
+  stakeCap,
   startRun,
   type RunState,
 } from "@/lib/run";
@@ -20,6 +26,29 @@ import HandTrainer from "./HandTrainer";
 export default function RunTrainer({ onExit }: { onExit: () => void }) {
   const [state, setState] = useState<RunState>(startRun);
   const [runId, setRunId] = useState(0);
+  const [loaded, setLoaded] = useState<{ depth: number; data: SeatsData } | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  // 스택이 줄면 얕은 깊이의 풀이로 넘어간다. 20bb 풀이로 10bb 판을 치면 정답이
+  // 다른 게임의 것이 된다.
+  const depth = playDepth(exactStackBb(state), RUN_DEPTHS);
+  const data = loaded?.depth === depth ? loaded.data : null;
+
+  useEffect(() => {
+    if (data) return;
+    let alive = true;
+    loadDepthData(depth)
+      .then((d) => {
+        if (alive) setLoaded({ depth, data: d });
+      })
+      .catch(() => {
+        if (alive) setLoadError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [depth, data, attempt]);
 
   if (state.over) {
     return (
@@ -34,12 +63,40 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+        <p className="text-sm text-[var(--gw-text-muted)]">데이터를 불러오지 못했습니다</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoadError(false);
+            setAttempt((n) => n + 1);
+          }}
+          className="rounded-[var(--gw-radius-control)] border border-[var(--gw-border)] px-4 py-2.5 text-[13px] font-semibold text-[var(--gw-text-secondary)]"
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="gw-label animate-[gw-thinking_1200ms_ease-in-out_infinite]">준비 중</p>
+      </div>
+    );
+  }
+
   return (
     <HandTrainer
-      key={runId}
+      // 깊이가 바뀌면 새로 띄운다. 판 도중에 다른 게임의 풀이가 끼어들면 안 된다.
+      key={`${runId}-${depth}`}
       run={{
         onHandDone: (o) => setState((s) => applyHand(s, o)),
         header: `L${levelOf(state) + 1} · ${state.hands + 1}/${RUN_HANDS} · ${stackBb(state)}bb`,
+        data,
+        capBb: stakeCap(state, depth),
       }}
     />
   );
