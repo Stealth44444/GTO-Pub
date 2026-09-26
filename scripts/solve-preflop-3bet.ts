@@ -115,6 +115,33 @@ for (const name of new Set(Object.values(BUCKET_OF))) {
 }
 const flopTableFor = (opener: string) => BUCKET_EV[BUCKET_OF[opener] ?? ""] ?? DEFAULT_EV;
 
+/**
+ * BB가 아닌 콜러의 단일 레이즈 팟 표(flopev-<구간>-ip / -sb). pipeline-threebet.ts가
+ * 만든다. 없으면 BB 콜러 표로 떨어지는데, 그러면 뒷자리 플랫이 포지션 없는
+ * 값으로 매겨진다 — CO 오픈에 BTN이 1.2%만 콜하는 답이 그렇게 나왔다.
+ */
+const CALLER_EV: Record<string, [number[], number[]]> = {};
+for (const name of new Set(Object.values(BUCKET_OF))) {
+  for (const kind of ["ip", "sb"]) {
+    const v = readValues(withDepth(`src/data/flopev-${name}-${kind}.json`));
+    if (v) CALLER_EV[`${name}-${kind}`] = toTable(v);
+  }
+}
+
+/**
+ * 오프너 o의 오픈에 k가 콜했을 때 쓸 표와, 그 표에서 콜러가 OOP(0번)인지.
+ * 블라인드 콜러는 오프너보다 먼저 치고, 그 밖의 콜러는 뒤에서 친다. SB 콜러
+ * 표는 SB를 OOP로 풀었다. BB 콜러 표는 BB를 OOP로 풀었다(SB 오픈도 그렇게
+ * 풀려 있다 — 실제로는 SB가 먼저 친다. 알려진 근사다).
+ */
+function callTable(o: string, k: string): { table: [number[], number[]]; callerOop: boolean } {
+  const bucket = BUCKET_OF[o] ?? "";
+  if (k === "BB") return { table: flopTableFor(o), callerOop: true };
+  const own = CALLER_EV[`${bucket}-${k === "SB" ? "sb" : "ip"}`];
+  if (own) return { table: own, callerOop: k === "SB" };
+  return { table: flopTableFor(o), callerOop: true };
+}
+
 // ── 3벳 팟 플랍 EV ───────────────────────────────────────────────────────
 
 /** 3벳한 쪽의 종류. 블라인드는 오프너보다 먼저 치고, SB 오픈에는 BB만 3벳한다. */
@@ -214,7 +241,8 @@ type Values = {
  */
 function values(hero: string, behind: string[], s: Strategy): Values {
   const heroPosted = posted(hero);
-  const flopEv = flopTableFor(hero);
+  // 콜러마다 표가 다르다(포지션과 레인지가 다르다).
+  const callTables = behind.map((k) => callTable(hero, k));
   const nK = behind.length;
 
   // 뒤 자리 중 누가 먼저 받는가.
@@ -307,7 +335,8 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     const call4 = new Float64Array(N);
     const paid = OPEN + (seat === "BB" ? ANTE : 0);
     for (let j = 0; j < N; j++) {
-      const fv = flopEv[0][j];
+      const ct = callTables[k];
+      const fv = ct.table[ct.callerOop ? 0 : 1][j];
       vsCall[j] = Number.isNaN(fv) ? -paid : fv - paid;
 
       // 3벳 올인: 오프너가 접으면 오픈액과 죽은 돈을 가져온다.
@@ -341,7 +370,8 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     let evOpen = allFold * (DEAD - heroPosted);
     for (let k = 0; k < nK; k++) {
       if (firstCall[k] > 0) {
-        const fv = flopEv[1][h];
+        const ct = callTables[k];
+        const fv = ct.table[ct.callerOop ? 1 : 0][h];
         evOpen += firstCall[k] * (Number.isNaN(fv) ? -OPEN : fv - OPEN);
       }
       if (firstJam[k] > 0) evOpen += firstJam[k] * Math.max(v.callJam[k][h], -OPEN);
@@ -488,7 +518,9 @@ function regret(hero: string, r: SeatResult): { avg: number; worst: number; wors
 
 console.log(
   `${STACK}bb · 반복 ${ITERS} · 3벳 IP ${threeBetTo("BTN")} / 블라인드 ${threeBetTo("BB")}\n` +
-    `3벳 팟 플랍 EV: ${flop3Used.length > 0 ? flop3Used.join(", ") : "없음 — 승률 × 팟으로 근사"}`,
+    `3벳 팟 플랍 EV: ${flop3Used.length > 0 ? flop3Used.join(", ") : "없음 — 승률 × 팟으로 근사"}
+` +
+    `BB 아닌 콜러 표: ${Object.keys(CALLER_EV).length > 0 ? Object.keys(CALLER_EV).join(", ") : "없음 — BB 콜러 표로 대신"}`,
 );
 
 const started = Date.now();

@@ -23,7 +23,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { ANTE_BB, OPEN_TO_BB, threeBetChips, withDepth } from "./game.ts";
+import { ANTE_BB, OPEN_TO_BB, flopChips, threeBetChips, withDepth } from "./game.ts";
 import { sampleFlops } from "./flop-sample.ts";
 import { flopReach, lcg } from "./flop-reach.ts";
 import type { SeatsData } from "../src/lib/seatGame.ts";
@@ -52,6 +52,48 @@ const BUCKETS = [
   { name: "late-sb", opener: "BTN", threeBettor: "SB" },
   { name: "sb-bb", opener: "SB", threeBettor: "BB" },
 ].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
+
+/**
+ * 단일 레이즈 팟의 BB가 아닌 콜러. 이 표가 없으면 솔버가 모든 콜러를 BB(OOP)로
+ * 매긴다 — 뒷자리 플랫이 포지션을 잃은 값으로 매겨져, CO 오픈에 BTN이 1.2%만
+ * 콜하고 3벳 올인을 13.4% 하는 답이 나왔다(2026-09-27). 이름은 보드 파이프라인의
+ * 구간(pipeline-boards.ts)과 같다.
+ */
+const CALL_BUCKETS = [
+  { name: "early-ip", opener: "UTG1", caller: "CO" },
+  { name: "middle-ip", opener: "HJ", caller: "BTN" },
+  { name: "late-ip", opener: "CO", caller: "BTN" },
+  { name: "early-sb", opener: "UTG1", caller: "SB" },
+  { name: "middle-sb", opener: "HJ", caller: "SB" },
+  { name: "late-sb", opener: "BTN", caller: "SB" },
+].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
+
+type EquityTable = { hands: string[]; equity: number[] };
+const EQUITY = JSON.parse(readFileSync("scripts/data/equity.json", "utf8")) as EquityTable;
+
+/**
+ * 콜 레인지의 씨앗: 오픈 레인지를 상대로 "승률 × 플랍 팟 − 콜액"이 폴드보다
+ * 나은 핸드. 승률을 다 실현한다고 보는 근사라 다음 바퀴부터는 풀린 콜 EV로 바꾼다.
+ */
+function equitySeed(d: SeatsData, openHands: string[], opener: string, caller: string): string[] {
+  const n = EQUITY.hands.length;
+  const combos = EQUITY.hands.map((h) => (h.length === 2 ? 6 : h.endsWith("s") ? 4 : 12));
+  const open = new Set(openHands);
+  const { pot } = flopChips(opener, caller);
+  const paid = OPEN_TO_BB + (caller === "BB" ? ANTE_BB : 0);
+  return d.hands.filter((h) => {
+    const i = EQUITY.hands.indexOf(h);
+    if (i < 0) return false;
+    let w = 0;
+    let t = 0;
+    for (let j = 0; j < n; j++) {
+      if (!open.has(EQUITY.hands[j])) continue;
+      w += combos[j] * EQUITY.equity[i * n + j];
+      t += combos[j];
+    }
+    return t > 0 && (w / t) * (pot / 10) - paid > -posted(caller);
+  });
+}
 
 const posted = (seat: string) => (seat === "BB" ? 1 + ANTE_BB : seat === "SB" ? 0.5 : 0);
 
@@ -140,12 +182,112 @@ if (!existsSync(SEATS_FILE) || !readSeats().threeBetToBb) {
 }
 
 const sample = sampleFlops(FLOP_COUNT);
-setStatus("시작", `${ROUNDS}바퀴 × 구간 ${BUCKETS.length}개 × 플랍 ${sample.length}개`);
+setStatus(
+  "시작",
+  `${ROUNDS}바퀴 × 콜 구간 ${CALL_BUCKETS.length}개 + 3벳 구간 ${BUCKETS.length}개 × 플랍 ${sample.length}개`,
+);
 let before = threeBetFreqs(readSeats());
+
+/**
+ * 한 구간의 표본 플랍을 풀고, 이 바퀴의 표를 만든 뒤, 지금까지 모든 바퀴의
+ * 평균을 풀이가 읽는 자리에 쓴다.
+ *
+ * 마지막 바퀴 표만 쓰면 레인지가 바퀴마다 양쪽으로 튄다(BB의 BTN 3벳 11.8% →
+ * 5.6% → 11.7%, 2026-09-27) — 바퀴마다 앞 바퀴에 최선 대응하기 때문이다.
+ * 평균을 쓰면 피셔스 플레이처럼 가운데로 모인다.
+ */
+function solveBucket(opts: {
+  label: string;
+  /** 바퀴 폴더들이 놓일 곳(깊이 꼬리표 포함). */
+  base: string;
+  /** 풀이가 읽는 평균 표. */
+  out: string;
+  round: number;
+  pot: number;
+  stack: number;
+  oop: string[];
+  ip: string[];
+}): number {
+  const dir = `${opts.base}/r${opts.round}`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/index.json`, JSON.stringify({ flops: sample }, null, 1));
+  const started = Date.now();
+  let reused = 0;
+  sample.forEach((s, i) => {
+    if (done(`${dir}/ev-${s.flop}.json`)) {
+      reused += 1;
+      return;
+    }
+    execFileSync(
+      EXPORTER,
+      [
+        "--flop", s.flop,
+        "--ev-only",
+        "--target-pct", TARGET_PCT,
+        "--outdir", dir,
+        "--tag", "ev",
+        "--pot", String(opts.pot),
+        "--stack", String(opts.stack),
+        "--oop-range", rangeString(opts.oop),
+        "--ip-range", rangeString(opts.ip),
+      ],
+      { stdio: "ignore" },
+    );
+    if ((i + 1) % 20 === 0) {
+      setStatus(opts.label, `${i + 1}/${sample.length} · ${((Date.now() - started) / 60000).toFixed(1)}분`);
+    }
+  });
+  execFileSync("node", ["--experimental-strip-types", "scripts/build-preflop-values.ts"], {
+    stdio: "ignore",
+    env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: `${dir}/table.json` },
+  });
+  const tables: FlopTable[] = [];
+  for (let r = 1; r <= opts.round; r++) {
+    const path = `${opts.base}/r${r}/table.json`;
+    if (existsSync(path)) tables.push(JSON.parse(readFileSync(path, "utf8")) as FlopTable);
+  }
+  writeFileSync(opts.out, JSON.stringify(averageTables(tables)));
+  return reused;
+}
 
 for (let round = 1; round <= ROUNDS; round++) {
   const d = readSeats();
   const started = Date.now();
+
+  // 단일 레이즈 팟, BB가 아닌 콜러. BB 콜러 표(flopev-<구간>)는 따로 있다.
+  for (const b of CALL_BUCKETS) {
+    const o = d.seats[b.opener];
+    const openHands = d.hands.filter((h) => (o?.open?.[h] ?? 0) > 0);
+    let callHands = betterThanFold(o?.ev?.vsOpenCall?.[b.caller], -posted(b.caller), d.hands);
+    let seeded = false;
+    if (callHands.length < 10) {
+      // 콜러 표가 없을 때 풀린 콜 EV는 BB 표로 매겨져 거의 모든 콜이 폴드보다
+      // 못하다. 그 레인지로는 표본이 비므로, 첫 바퀴는 승률로 씨앗을 준다.
+      callHands = equitySeed(d, openHands, b.opener, b.caller);
+      seeded = true;
+    }
+    if (openHands.length < 3 || callHands.length < 3) {
+      setStatus("건너뜀", `${b.name}: 레인지가 너무 좁다(오픈 ${openHands.length} · 콜 ${callHands.length})`);
+      continue;
+    }
+    const callerOop = b.caller === "SB";
+    const { pot, stack } = flopChips(b.opener, b.caller);
+    const reused = solveBucket({
+      label: `${round}바퀴 콜 ${b.name}`,
+      base: withDepth(`scripts/data/flopev-${b.name}`),
+      out: withDepth(`src/data/flopev-${b.name}.json`),
+      round,
+      pot,
+      stack,
+      oop: callerOop ? callHands : openHands,
+      ip: callerOop ? openHands : callHands,
+    });
+    setStatus(
+      `${round}바퀴 콜 ${b.name} 완료`,
+      `오픈 ${openHands.length} · 콜 ${callHands.length}핸드${seeded ? "(승률 씨앗)" : ""}${reused ? ` · 플랍 ${reused}개 재사용` : ""}`,
+    );
+  }
+
   for (const b of BUCKETS) {
     const o = d.seats[b.opener];
     const oppFold = -posted(b.threeBettor);
@@ -158,51 +300,18 @@ for (let round = 1; round <= ROUNDS; round++) {
     const oop = threeBettorOop(b.opener, b.threeBettor) ? tbHands : callHands;
     const ip = oop === tbHands ? callHands : tbHands;
     const { pot, stack } = threeBetChips(b.opener, b.threeBettor);
-    const dir = `${withDepth(`scripts/data/flopev3-${b.name}`)}/r${round}`;
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(`${dir}/index.json`, JSON.stringify({ flops: sample }, null, 1));
-
-    let reused = 0;
-    sample.forEach((s, i) => {
-      if (done(`${dir}/ev-${s.flop}.json`)) {
-        reused += 1;
-        return;
-      }
-      execFileSync(
-        EXPORTER,
-        [
-          "--flop", s.flop,
-          "--ev-only",
-          "--target-pct", TARGET_PCT,
-          "--outdir", dir,
-          "--tag", "ev",
-          "--pot", String(pot),
-          "--stack", String(stack),
-          "--oop-range", rangeString(oop),
-          "--ip-range", rangeString(ip),
-        ],
-        { stdio: "ignore" },
-      );
-      if ((i + 1) % 20 === 0) {
-        setStatus(`${round}바퀴 ${b.name}`, `${i + 1}/${sample.length} · ${((Date.now() - started) / 60000).toFixed(1)}분`);
-      }
+    const reused = solveBucket({
+      label: `${round}바퀴 3벳 ${b.name}`,
+      base: withDepth(`scripts/data/flopev3-${b.name}`),
+      out: withDepth(`src/data/flopev3-${b.name}.json`),
+      round,
+      pot,
+      stack,
+      oop,
+      ip,
     });
-    // 이 바퀴의 표는 바퀴 폴더에 두고, 풀이가 읽는 표는 지금까지 모든 바퀴의
-    // 평균으로 쓴다. 마지막 바퀴 표만 쓰면 3벳 레인지가 바퀴마다 양쪽으로 튄다
-    // (BB의 BTN 3벳 11.8% → 5.6% → 11.7%, 2026-09-27). 바퀴마다 앞 바퀴에 최선
-    // 대응하기 때문이다. 평균을 쓰면 피셔스 플레이처럼 가운데로 모인다.
-    execFileSync("node", ["--experimental-strip-types", "scripts/build-preflop-values.ts"], {
-      stdio: "ignore",
-      env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: `${dir}/table.json` },
-    });
-    const tables: FlopTable[] = [];
-    for (let r = 1; r <= round; r++) {
-      const path = `${withDepth(`scripts/data/flopev3-${b.name}`)}/r${r}/table.json`;
-      if (existsSync(path)) tables.push(JSON.parse(readFileSync(path, "utf8")) as FlopTable);
-    }
-    writeFileSync(withDepth(`src/data/flopev3-${b.name}.json`), JSON.stringify(averageTables(tables)));
     setStatus(
-      `${round}바퀴 ${b.name} 완료`,
+      `${round}바퀴 3벳 ${b.name} 완료`,
       `3벳 ${tbHands.length} · 콜 ${callHands.length}핸드${reused ? ` · 플랍 ${reused}개 재사용` : ""}`,
     );
   }
