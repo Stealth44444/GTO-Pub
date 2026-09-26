@@ -57,7 +57,7 @@ export const LESSONS: Lesson[] = [
       },
       {
         kind: "figures",
-        caption: "BB 앤티 1bb, BTN 2.5bb 오픈 기준",
+        caption: "20bb 스택, BB 앤티 1bb, BTN 2.5bb 오픈 기준",
         rows: [
           { label: "BB가 더 내야 하는 금액", value: "1.5bb" },
           { label: "그때 팟에 있는 금액", value: "5.0bb" },
@@ -117,7 +117,7 @@ export const LESSONS: Lesson[] = [
   {
     id: "seat-open-width",
     title: "앞자리는 왜 그렇게 조금밖에 안 여나",
-    summary: "같은 스택에서도 UTG와 SB가 여는 폭은 세 배 넘게 차이 납니다.",
+    summary: "같은 20bb에서도 UTG와 SB가 여는 폭은 세 배 넘게 차이 납니다.",
     minutes: 3,
     tags: ["프리플랍", "포지션"],
     status: "ready",
@@ -153,7 +153,7 @@ export const LESSONS: Lesson[] = [
       {
         kind: "text",
         body:
-          "앞자리에서 올인이 거의 없는 것도 같은 이야기입니다. UTG 올인은 " +
+          "앞자리에서 올인이 거의 없는 것도 같은 이야기입니다. 20bb에서 UTG 올인은 " +
           "뒤의 여덟 자리가 모두 접어주기를 바라는 선택인데, 여덟 자리 중 하나가 " +
           "받을 확률이 충분히 높아서 그 기대가 성립하지 않습니다. 반대로 SB의 올인은 " +
           "받을 사람이 하나뿐이라 자주 남습니다.",
@@ -203,7 +203,7 @@ export const LESSONS: Lesson[] = [
         body:
           "실전에서 쓰는 방법은 간단합니다. SPR이 3 아래면 좋은 탑페어로도 " +
           "스택을 넣을 각오를 하고 들어가고, SPR이 6을 넘으면 탑페어 하나로는 " +
-          "스택이 안 들어갑니다. 30bb 게임은 SPR이 4 안팎이라 그 사이, 보드에 따라 갈리는 구간입니다.",
+          "스택이 안 들어갑니다. 20bb 게임은 거의 항상 앞쪽입니다.",
       },
     ],
   },
