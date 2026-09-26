@@ -6,6 +6,7 @@ import { actionEvFor, actionLabel, boardAt, type SolvedSpot } from "@/lib/tree";
 import { committedBySeat } from "@/lib/preflop";
 import { judge } from "@/lib/showdown";
 import { capCommitted, postflopNet, preflopNet, type Winner } from "@/lib/handNet";
+import { allinEquity, seeded } from "@/lib/allinEquity";
 import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
@@ -260,7 +261,20 @@ function freshRound(
 }
 
 /** 한 판이 끝났을 때 런에 넘기는 값. */
-export type HandOutcome = { netBb: number; lossBb: number; graded: number };
+export type HandOutcome = {
+  netBb: number;
+  /**
+   * 올인이 콜된 판을 그 순간 승률로 계산한 손익. 올인이 아니면 netBb와 같다.
+   * netBb와의 차이가 운이다 — 좋은 판단으로 져도 이 값은 플러스다.
+   */
+  evNetBb: number;
+  lossBb: number;
+  graded: number;
+};
+
+/** 승률 eq로 이길 때와 질 때의 손익을 섞는다. 무승부는 승률에 이미 반이 들어 있다. */
+const blend = (eq: number, win: number, lose: number) =>
+  Math.round((eq * win + (1 - eq) * lose) * 100) / 100;
 
 /**
  * 이 판에서 히어로가 실제로 얻거나 잃은 칩과, 판단들이 최선에서 잃은 양.
@@ -280,6 +294,7 @@ function handOutcome(
   const committed = capCommitted(committedBySeat(TABLE_SIZE, anteBb, steps, steps.length), capBb);
   const o = round.game.outcome;
   let netBb = 0;
+  let evNetBb: number | null = null;
   if (o?.kind === "folded") {
     netBb = preflopNet(committed, hero, o.winner === hero ? "hero" : "villain");
   } else if (o?.kind === "allin") {
@@ -288,6 +303,9 @@ function handOutcome(
     else if (round.allinBoard && round.allinCards) {
       const sd = judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
       netBb = preflopNet(committed, hero, sd?.winner ?? "tie");
+      // 판 id를 씨앗으로 쓴다. 같은 판을 다시 계산해도 값이 흔들리지 않는다.
+      const eq = allinEquity(round.allinCards.hero, round.allinCards.villain, [], seeded(round.id));
+      evNetBb = blend(eq, preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
     }
   } else if (o?.kind === "flop") {
     if (o.opener !== hero && o.caller !== hero) {
@@ -307,10 +325,26 @@ function handOutcome(
             ?.winner ?? "tie";
       }
       const startPot = Object.values(committed).reduce((a, b) => a + b, 0);
-      netBb = postflopNet(startPot, committed[hero] ?? 0, round.post.history, heroPlayer, winner);
+      const net = (w: Winner) =>
+        postflopNet(startPot, committed[hero] ?? 0, round.post!.history, heroPlayer, w);
+      netBb = net(winner);
+      // 리버 전에 올인이 콜됐으면, 남은 카드는 운이다. 콜된 스트릿의 보드에서
+      // 승률을 센다(플랍 990가지, 턴 44가지 전수).
+      const prev = round.post.history.at(-2);
+      if (last?.action.kind === "call" && prev?.action.kind === "allin" && last.street !== "river") {
+        const h = hands[heroPlayer];
+        const v = hands[1 - heroPlayer];
+        const eq = allinEquity(
+          [h.slice(0, 2), h.slice(2, 4)],
+          [v.slice(0, 2), v.slice(2, 4)],
+          boardAt(round.spot, last.street),
+          seeded(round.id),
+        );
+        evNetBb = blend(eq, net("hero"), net("villain"));
+      }
     }
   }
-  return { netBb, lossBb, graded: graded.length };
+  return { netBb, evNetBb: evNetBb ?? netBb, lossBb, graded: graded.length };
 }
 
 export default function HandTrainer({

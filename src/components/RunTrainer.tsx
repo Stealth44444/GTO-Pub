@@ -11,6 +11,7 @@ import {
   playDepth,
   RUN_DEPTHS,
   RUN_HANDS,
+  RUN_START_BB,
   stackBb,
   stakeCap,
   startRun,
@@ -112,6 +113,8 @@ function RunSummary({
   onExit: () => void;
 }) {
   const avg = state.graded > 0 ? state.lossBb / state.graded : null;
+  /** 칩 증감(1레벨 bb). */
+  const net = state.chips - RUN_START_BB;
   // 런 전체의 판단 품질. 한 판의 등급과 같은 기준을 판단당 평균 손실에 댄다.
   const grade = avg === null ? null : gradeByEvLoss(avg);
   return (
@@ -133,6 +136,10 @@ function RunSummary({
           value={avg === null ? "—" : `${avg.toFixed(2)}bb`}
           icon={grade ? <GradeIcon id={grade.id} color={grade.color} /> : null}
         />
+        {/* 칩 증감을 운과 나머지로 나눈다. 잘 치고 떨어진 판이 "운 −"로 보여야
+            다음 런에서도 같은 판단을 한다. 단위는 1레벨 bb. */}
+        <Stat label="운" value={`${signed(state.luck)}bb`} />
+        <Stat label="운을 뺀 손익" value={`${signed(net - state.luck)}bb`} />
       </dl>
 
       <div className="mt-10 grid grid-cols-[1fr_1.4fr] gap-2">
@@ -165,4 +172,9 @@ function Stat({ label, value, icon }: { label: string; value: string; icon?: Rea
       </dd>
     </div>
   );
+}
+
+function signed(v: number): string {
+  const r = Math.round(v * 10) / 10;
+  return `${r > 0 ? "+" : ""}${r}`;
 }

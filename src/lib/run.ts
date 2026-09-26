@@ -25,11 +25,24 @@ export type RunState = {
   /** 판단들이 최선에서 잃은 합(bb). 채점할 수 없던 판단은 빠진다. */
   lossBb: number;
   graded: number;
+  /**
+   * 운으로 얻거나 잃은 칩(1레벨 bb). 올인 판의 실제 결과 − 그 순간 승률 기준 결과.
+   * 칩 증감에서 이걸 빼면 실력으로 번 몫이 남는다.
+   */
+  luck: number;
   over: null | "bust" | "done";
 };
 
 export function startRun(): RunState {
-  return { hands: 0, chips: RUN_START_BB, peak: RUN_START_BB, lossBb: 0, graded: 0, over: null };
+  return {
+    hands: 0,
+    chips: RUN_START_BB,
+    peak: RUN_START_BB,
+    lossBb: 0,
+    graded: 0,
+    luck: 0,
+    over: null,
+  };
 }
 
 /** 지금 판의 레벨(0부터). */
@@ -50,7 +63,7 @@ export function stackBb(state: RunState): number {
  */
 export function applyHand(
   state: RunState,
-  result: { netBb: number; lossBb: number; graded: number },
+  result: { netBb: number; evNetBb?: number; lossBb: number; graded: number },
 ): RunState {
   if (state.over) return state;
   const mult = LEVEL_MULT[levelOf(state)];
@@ -65,6 +78,9 @@ export function applyHand(
     peak: Math.max(state.peak, chips),
     lossBb: Math.round((state.lossBb + result.lossBb) * 100) / 100,
     graded: state.graded + result.graded,
+    luck:
+      Math.round((state.luck + (result.netBb - (result.evNetBb ?? result.netBb)) * mult) * 100) /
+      100,
     over: chips <= 0 ? "bust" : hands >= RUN_HANDS ? "done" : null,
   };
 }

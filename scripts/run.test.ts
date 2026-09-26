@@ -74,6 +74,18 @@ expect(playDepth(13.3, RUN_DEPTHS), 12, "13.3bb는 12bb");
 expect(playDepth(40, RUN_DEPTHS), 20, "20bb를 넘으면 20bb");
 expect(playDepth(5, RUN_DEPTHS), 8, "가장 얕은 깊이보다 적으면 그 깊이");
 
+console.log("운");
+{
+  // 20bb 올인을 이겼는데(+20.5) 그 순간 승률로는 +12.4였다 → 운 +8.1.
+  let s = applyHand(startRun(), { netBb: 20.5, evNetBb: 12.4, lossBb: 0, graded: 1 });
+  expect(s.luck, 8.1, "실제 − 승률 기준 = 운");
+  // 레벨 2(×1.25)에서 -10으로 졌는데 승률 기준으로는 +2였다 → 운 -12bb = -15칩.
+  s = { ...s, hands: HANDS_PER_LEVEL };
+  s = applyHand(s, { netBb: -10, evNetBb: 2, lossBb: 0, graded: 1 });
+  expect(s.luck, -6.9, "레벨이 오르면 같은 bb가 더 많은 칩");
+  expect(applyHand(startRun(), { netBb: 3, lossBb: 0, graded: 1 }).luck, 0, "올인이 아니면 운 0");
+}
+
 console.log("부스러기 없는 버스트");
 {
   // 레벨 3(×1.5)에서 1.25칩 = 0.833bb. 다 잃은 손익은 반올림되어 -0.83으로 온다.
