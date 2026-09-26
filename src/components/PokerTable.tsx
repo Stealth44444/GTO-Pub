@@ -67,6 +67,7 @@ export default function PokerTable({
   tableSize,
   heroPosition,
   stackBb,
+  heroStackBb,
   anteBb,
   shoverPosition,
   awaitingAction,
@@ -90,6 +91,8 @@ export default function PokerTable({
   tableSize: number;
   heroPosition: string;
   stackBb: number;
+  /** 히어로의 실제 스택. 런에서 데이터 깊이와 다를 때만 준다. */
+  heroStackBb?: number;
   anteBb: number;
   /** 히어로 앞에서 이미 올인한 자리. 없으면 null. */
   shoverPosition: string | null;
@@ -345,7 +348,12 @@ export default function PokerTable({
             : chipsSwept
               ? 0
               : (committed[seat] ?? 0);
-          const seatStack = stackBb - (committed[seat] ?? 0);
+          // 히어로 자리는 실제 스택을 쓴다(런). 거는 금액이 스택에서 잘리면 0에서 멈춘다.
+          const seatStack = Math.max(
+            0,
+            (seat === heroPosition && heroStackBb !== undefined ? heroStackBb : stackBb) -
+              (committed[seat] ?? 0),
+          );
           // 낸 칩은 실제 테이블처럼 자기 앞, 팟 쪽에 둔다. 좌석에서 테이블 중심을
           // 향하는 방향으로 밀어내면 위아래 좌석도 옆이 아니라 앞에 놓인다.
           // top은 높이 기준 %, left는 너비 기준 %라 가로 성분에 비율을 곱해야

@@ -18,6 +18,23 @@ function settle(potBb: number, heroInBb: number, winner: Winner): number {
 }
 
 /**
+ * 스택이 칠 깊이보다 적을 때, 모든 자리의 투입을 그 스택에서 자른다.
+ *
+ * 5bb로 8bb 올인 대결을 하면 상대의 8 중 5만 걸리고 나머지는 돌아간다. 접은
+ * 블라인드도 5를 넘을 수는 없다 — 히어로가 받을 수 있는 몫은 자리마다 자기
+ * 스택만큼이다. 그래서 자리마다 자르면 이기는 쪽과 지는 쪽이 대칭이 된다.
+ */
+export function capCommitted(
+  committed: Record<string, number>,
+  capBb: number | undefined,
+): Record<string, number> {
+  if (capBb === undefined) return committed;
+  return Object.fromEntries(
+    Object.entries(committed).map(([seat, v]) => [seat, Math.min(v, capBb)]),
+  );
+}
+
+/**
  * 프리플랍에서 끝난 판. committed는 자리별 최종 투입액(블라인드·앤티 포함)이다.
  * 팟은 모두의 투입액 합이다 — 접은 자리의 블라인드도 팟에 남는다.
  */

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   actionsAt,
   applyHeroAction,
+  canOpen,
   evAt,
   labelFor,
   sampleAction,
@@ -263,6 +264,116 @@ for (const seat of ["UTG", "CO", "BTN"]) {
   expect(heroAsked > 0, true, "3벳 올인 뒤의 히어로에게 차례가 온다");
   expect(orderChecked > 0, true, "오프너 응답 순서를 검사했다");
   setEquityTable(null);
+}
+
+console.log("상대 BB의 응답");
+{
+  // BB는 먼저 여는 스팟이 없어 데이터에 자리가 없다. 그래도 오프너의 데이터로
+  // 응답해야 한다. AA로 BTN 오픈에 접는 BB는 없다.
+  const rnd = lcg(7);
+  let folds = 0;
+  for (let i = 0; i < 200; i++) {
+    if (sampleAction(data, "BB", { kind: "vsOpen", opener: "BTN" }, "AA", rnd) === "fold") folds++;
+  }
+  expect(folds, 0, "BB는 AA로 BTN 오픈에 접지 않는다");
+
+  let calls = 0;
+  for (let i = 0; i < 200; i++) {
+    if (sampleAction(data, "BB", { kind: "vsJam", jammer: "BTN", iOpened: false }, "AA", rnd) === "call") calls++;
+  }
+  expect(calls, 200, "BB는 AA로 BTN 올인에 콜한다");
+}
+
+console.log("올인에 콜한 자리의 투입");
+{
+  // 올인에 콜하면 스택 전부를 낸다. 오픈 콜 금액(2.5 + 앤티)으로 적으면 팟 표시와
+  // 런의 칩 정산이 둘 다 틀린다.
+  const r = lcg(5);
+  let checked = 0;
+  let wrong = 0;
+  for (let n = 0; n < 3000; n++) {
+    const hands = Object.fromEntries(SEATS.map((s) => [s, data.hands[Math.floor(r() * 169)]]));
+    const g = startGame(data, SEATS, "__nobody__", hands, r);
+    if (g.outcome?.kind !== "allin") continue;
+    for (const seat of [g.outcome.a, g.outcome.b]) {
+      const last = [...g.steps].reverse().find((st) => st.seat === seat);
+      checked++;
+      if (last?.committedBb !== data.stackBb) wrong++;
+    }
+  }
+  expect(checked > 0, true, "올인 대결이 나온다");
+  expect(wrong, 0, "올인 대결의 두 자리는 모두 스택 전부를 낸다");
+
+  // 히어로가 열고 3벳 올인에 접으면 오픈액은 팟에 남는다.
+  const r2 = lcg(9);
+  let heroFolds = 0;
+  let lost = 0;
+  for (let n = 0; n < 20000 && heroFolds < 20; n++) {
+    const hands = Object.fromEntries(SEATS.map((s) => [s, data.hands[Math.floor(r2() * 169)]]));
+    const g = startGame(data, SEATS, "CO", hands, r2);
+    if (g.turn?.stage.kind !== "firstIn") continue;
+    const opened = applyHeroAction(data, g, "open", r2);
+    if (opened.turn?.stage.kind !== "vsJam") continue;
+    const folded = applyHeroAction(data, opened, "fold", r2);
+    heroFolds++;
+    const last = [...folded.steps].reverse().find((st) => st.seat === "CO");
+    if (last?.committedBb !== data.openToBb) lost++;
+  }
+  expect(heroFolds > 0, true, "히어로가 열고 올인을 맞는 판이 나온다");
+  expect(lost, 0, "열고 접은 히어로의 오픈액은 남는다");
+}
+
+console.log("오픈 없는 깊이");
+{
+  // 핸드 두 개짜리 가짜 푸시/폴드 데이터. AA만 올인하고 AA만 콜한다.
+  // ev 배열은 hands 순서: [AA, 72o].
+  const pfSeats: SeatsData["seats"] = {};
+  for (const s of SEATS) {
+    pfSeats[s] = {
+      openJam: s === "BB" ? undefined : { AA: 1 },
+      vsJamCall: Object.fromEntries(SEATS.map((c) => [c, { AA: 1 }])),
+      foldEvBb: 0,
+      ev: {
+        open: [],
+        openJam: [5, -1],
+        vsOpenCall: {},
+        vsOpenJam: {},
+        callJam: {},
+        vsJamCall: Object.fromEntries(SEATS.map((c) => [c, [4, -2]])),
+      },
+    };
+  }
+  const pf: SeatsData = {
+    tableSize: 9,
+    stackBb: 10,
+    anteBb: 1,
+    openToBb: 0,
+    hands: ["AA", "72o"],
+    seats: pfSeats,
+  };
+
+  expect(canOpen(pf), false, "openToBb 0이면 오픈이 없다");
+  expect(canOpen(data), true, "20bb 데이터에는 오픈이 있다");
+  expect(actionsAt({ kind: "firstIn" }, false), ["fold", "jam"], "오픈 없는 첫 진입");
+
+  const g = startGame(pf, SEATS, "UTG", allHands("72o"), always(0.5));
+  expect(g.turn?.actions, ["fold", "jam"], "UTG 첫 진입은 폴드/올인");
+  expect(g.turn?.evBb, [0, -1], "폴드 0, 올인 -1");
+
+  const walk = startGame(pf, SEATS, "BB", allHands("72o"), always(0.5));
+  expect(walk.outcome, { kind: "folded", winner: "BB" }, "다 접으면 BB가 가져간다");
+  expect(walk.turn, null, "BB에게는 고를 것이 없다");
+
+  const hands = allHands("72o");
+  hands.UTG = "AA";
+  const vsJam = startGame(pf, SEATS, "SB", hands, always(0.5));
+  expect(vsJam.turn?.stage, { kind: "vsJam", jammer: "UTG", iOpened: false }, "SB가 UTG 올인을 마주한다");
+  const folded = applyHeroAction(pf, vsJam, "fold", always(0.5));
+  expect(folded.outcome, { kind: "folded", winner: "UTG" }, "SB가 접고 BB도 접으면 UTG");
+  const called = applyHeroAction(pf, vsJam, "call", always(0.5));
+  expect(called.outcome, { kind: "allin", a: "UTG", b: "SB" }, "SB가 콜하면 올인 대결");
+  const callStep = called.steps.find((st) => st.seat === "SB");
+  expect(callStep?.committedBb, 10, "올인에 콜한 SB는 스택 전부를 낸다");
 }
 
 console.log(`

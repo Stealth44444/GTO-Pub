@@ -5,7 +5,8 @@ import { SEATS_DATA } from "@/lib/seatsData";
 import { actionEvFor, actionLabel, boardAt, type SolvedSpot } from "@/lib/tree";
 import { committedBySeat } from "@/lib/preflop";
 import { judge } from "@/lib/showdown";
-import { postflopNet, preflopNet, type Winner } from "@/lib/handNet";
+import { capCommitted, postflopNet, preflopNet, type Winner } from "@/lib/handNet";
+import { allinEquity, seeded } from "@/lib/allinEquity";
 import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
@@ -32,6 +33,7 @@ import {
   startGame,
   type GameState,
   type SeatAction,
+  type SeatsData,
 } from "@/lib/seatGame";
 import {
   loadSpot,
@@ -216,7 +218,11 @@ function worthPlaying(game: GameState, heroSeat: string, skills: SkillMap): bool
   return o.kind === "folded" && o.winner === heroSeat;
 }
 
-function freshRound(fixedSeat: string | null | undefined, skills: SkillMap): Round {
+function freshRound(
+  data: SeatsData,
+  fixedSeat: string | null | undefined,
+  skills: SkillMap,
+): Round {
   // 자리를 정하지 않았으면 다시 돌릴 때마다 자리도 새로 고른다. 그래야 적응형
   // 딜이 자리 사이에서도 약한 쪽을 더 자주 고를 수 있다.
   const pickSeat = () =>
@@ -229,11 +235,11 @@ function freshRound(fixedSeat: string | null | undefined, skills: SkillMap): Rou
   // 나오면 마지막 판을 그냥 쓴다 — 무한히 돌리느니 한 판 어색한 편이 낫다.
   let heroSeat = pickSeat();
   let hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
-  let game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
+  let game = startGame(data, SEATS, heroSeat, hands, Math.random);
   for (let tries = 0; tries < 60 && !worthPlaying(game, heroSeat, skills); tries++) {
     heroSeat = pickSeat();
     hands = Object.fromEntries(SEATS.map((s) => [s, dealHandCode(Math.random)]));
-    game = startGame(SEATS_DATA, SEATS, heroSeat, hands, Math.random);
+    game = startGame(data, SEATS, heroSeat, hands, Math.random);
   }
 
   // 히어로가 실제로 쥔 두 장. 이걸 안 정하면 테이블이 더미 핸드를 그린다.
@@ -255,20 +261,40 @@ function freshRound(fixedSeat: string | null | undefined, skills: SkillMap): Rou
 }
 
 /** 한 판이 끝났을 때 런에 넘기는 값. */
-export type HandOutcome = { netBb: number; lossBb: number; graded: number };
+export type HandOutcome = {
+  netBb: number;
+  /**
+   * 올인이 콜된 판을 그 순간 승률로 계산한 손익. 올인이 아니면 netBb와 같다.
+   * netBb와의 차이가 운이다 — 좋은 판단으로 져도 이 값은 플러스다.
+   */
+  evNetBb: number;
+  lossBb: number;
+  graded: number;
+};
+
+/** 승률 eq로 이길 때와 질 때의 손익을 섞는다. 무승부는 승률에 이미 반이 들어 있다. */
+const blend = (eq: number, win: number, lose: number) =>
+  Math.round((eq * win + (1 - eq) * lose) * 100) / 100;
 
 /**
  * 이 판에서 히어로가 실제로 얻거나 잃은 칩과, 판단들이 최선에서 잃은 양.
  * 보드를 못 불러와 플랍에서 멈춘 판은 무효로 본다(손익 0).
  */
-function handOutcome(round: Round, decisions: Decision[]): HandOutcome {
+function handOutcome(
+  round: Round,
+  decisions: Decision[],
+  anteBb: number,
+  capBb: number | undefined,
+): HandOutcome {
   const graded = decisions.filter((d) => d.lossBb !== null);
   const lossBb = Math.round(graded.reduce((a, d) => a + (d.lossBb ?? 0), 0) * 100) / 100;
   const hero = round.heroSeat;
   const steps = round.game.steps;
-  const committed = committedBySeat(TABLE_SIZE, SEATS_DATA.anteBb, steps, steps.length);
+  // 스택이 칠 깊이보다 적으면 자리마다 그 스택까지만 걸린다(handNet.ts).
+  const committed = capCommitted(committedBySeat(TABLE_SIZE, anteBb, steps, steps.length), capBb);
   const o = round.game.outcome;
   let netBb = 0;
+  let evNetBb: number | null = null;
   if (o?.kind === "folded") {
     netBb = preflopNet(committed, hero, o.winner === hero ? "hero" : "villain");
   } else if (o?.kind === "allin") {
@@ -277,6 +303,9 @@ function handOutcome(round: Round, decisions: Decision[]): HandOutcome {
     else if (round.allinBoard && round.allinCards) {
       const sd = judge(round.allinBoard, round.allinCards.hero, round.allinCards.villain);
       netBb = preflopNet(committed, hero, sd?.winner ?? "tie");
+      // 판 id를 씨앗으로 쓴다. 같은 판을 다시 계산해도 값이 흔들리지 않는다.
+      const eq = allinEquity(round.allinCards.hero, round.allinCards.villain, [], seeded(round.id));
+      evNetBb = blend(eq, preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
     }
   } else if (o?.kind === "flop") {
     if (o.opener !== hero && o.caller !== hero) {
@@ -296,10 +325,26 @@ function handOutcome(round: Round, decisions: Decision[]): HandOutcome {
             ?.winner ?? "tie";
       }
       const startPot = Object.values(committed).reduce((a, b) => a + b, 0);
-      netBb = postflopNet(startPot, committed[hero] ?? 0, round.post.history, heroPlayer, winner);
+      const net = (w: Winner) =>
+        postflopNet(startPot, committed[hero] ?? 0, round.post!.history, heroPlayer, w);
+      netBb = net(winner);
+      // 리버 전에 올인이 콜됐으면, 남은 카드는 운이다. 콜된 스트릿의 보드에서
+      // 승률을 센다(플랍 990가지, 턴 44가지 전수).
+      const prev = round.post.history.at(-2);
+      if (last?.action.kind === "call" && prev?.action.kind === "allin" && last.street !== "river") {
+        const h = hands[heroPlayer];
+        const v = hands[1 - heroPlayer];
+        const eq = allinEquity(
+          [h.slice(0, 2), h.slice(2, 4)],
+          [v.slice(0, 2), v.slice(2, 4)],
+          boardAt(round.spot, last.street),
+          seeded(round.id),
+        );
+        evNetBb = blend(eq, net("hero"), net("villain"));
+      }
     }
   }
-  return { netBb, lossBb, graded: graded.length };
+  return { netBb, evNetBb: evNetBb ?? netBb, lossBb, graded: graded.length };
 }
 
 export default function HandTrainer({
@@ -311,10 +356,29 @@ export default function HandTrainer({
    * 토너먼트 런 안에서 칠 때. 판이 끝날 때마다 결과를 넘기고, 몇 판마다 멈추는
    * 회고 대신 런이 자기 요약을 보여준다. header는 헤더 오른쪽 자리에 들어간다.
    */
-  run?: { onHandDone: (o: HandOutcome) => void; header: ReactNode };
+  run?: {
+    onHandDone: (o: HandOutcome) => void;
+    header: ReactNode;
+    /** 이 판을 칠 깊이의 풀이. 없으면 앱의 기본 깊이다. */
+    data?: SeatsData;
+    /** 스택이 칠 깊이보다 적을 때 그 스택. 이만큼까지만 오간다. */
+    capBb?: number;
+    /** 히어로의 실제 스택(지금 레벨 bb). 좌석에 이걸 적는다. */
+    stackBb?: number;
+  };
 }) {
+  const data = runMode?.data ?? SEATS_DATA;
+  /**
+   * 버튼과 판단 기록에 쓰는 액션 이름. 스택이 깊이보다 적으면 올인은 실제로
+   * 거는 금액으로 적는다 — 4.8bb를 들고 "올인 8bb"를 누르게 하면 안 된다.
+   */
+  const capBb = runMode?.capBb;
+  const actionText = (a: SeatAction) =>
+    a === "jam" && capBb !== undefined
+      ? `올인 ${Math.round(capBb * 10) / 10}bb`
+      : labelFor(data, a);
   const [entries, setEntries] = useState<SpotEntry[] | null>(null);
-  const [round, setRound] = useState<Round | null>(() => freshRound(seat, currentSkills()));
+  const [round, setRound] = useState<Round | null>(() => freshRound(data, seat, currentSkills()));
   const [phase, setPhase] = useState<Phase>("preflop");
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -369,8 +433,8 @@ export default function HandTrainer({
     setPhase("preflop");
     setRevealed(0);
     loggedRef.current = null;
-    setRound(freshRound(seat, currentSkills()));
-  }, [clearTimers, seat]);
+    setRound(freshRound(data, seat, currentSkills()));
+  }, [clearTimers, seat, data]);
 
   /**
    * 이 판을 접고 다음으로. 세션 집계는 여기서 한다 — 이펙트 안에서 상태를
@@ -382,7 +446,7 @@ export default function HandTrainer({
       return;
     }
     if (runMode) {
-      runMode.onHandDone(handOutcome(round, decisions));
+      runMode.onHandDone(handOutcome(round, decisions, data.anteBb, runMode.capBb));
       newRound();
       return;
     }
@@ -395,7 +459,7 @@ export default function HandTrainer({
       return;
     }
     newRound();
-  }, [round, decisions, run, newRound, runMode]);
+  }, [round, decisions, run, newRound, runMode, data.anteBb]);
 
   useEffect(() => {
     // 3벳 올인 뒷자리의 EV는 승률표로 낸다. 받기 전에 딜된 판은 그 자리가 접는다.
@@ -510,7 +574,7 @@ export default function HandTrainer({
       if (decisions.length === 0) {
         const t = window.setTimeout(() => {
           // 고를 것 없이 끝난 판(BB 워크)도 런에서는 칩이 오간다.
-          runRef.current?.onHandDone(handOutcome(round, decisions));
+          runRef.current?.onHandDone(handOutcome(round, decisions, data.anteBb, runRef.current?.capBb));
           newRound();
         }, 700);
         timers.current.push(t);
@@ -664,6 +728,7 @@ export default function HandTrainer({
     decisions,
     heroInFlop,
     newRound,
+    data.anteBb,
   ]);
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.
@@ -771,8 +836,8 @@ export default function HandTrainer({
         userId,
         mode: "hand",
         tableSize: TABLE_SIZE,
-        stackBb: SEATS_DATA.stackBb,
-        anteBb: SEATS_DATA.anteBb,
+        stackBb: data.stackBb,
+        anteBb: data.anteBb,
         position: round.heroSeat,
         handCode: round.hands[round.heroSeat],
         heroCards: round.deal?.hands[round.deal.heroPlayer],
@@ -788,23 +853,23 @@ export default function HandTrainer({
         })),
       }),
     );
-  }, [ending, phase, round, decisions]);
+  }, [ending, phase, round, decisions, data.anteBb, data.stackBb]);
 
   const choosePreflop = (action: SeatAction) => {
     if (!round?.game.turn || ending || !allRevealed) return;
     const turn = round.game.turn;
-    const labels = turn.actions.map((a) => labelFor(SEATS_DATA, a));
+    const labels = turn.actions.map((a) => actionText(a));
     const i = turn.actions.indexOf(action);
 
     // 이 상황의 레인지 전체. 액션 순서와 레인지 순서가 같아야 색이 맞는다.
-    const me = SEATS_DATA.seats[round.heroSeat];
+    const me = data.seats[round.heroSeat];
     const stage = turn.stage;
     const ranges = turn.actions.map((a) => {
       if (stage.kind === "firstIn") {
         return a === "open" ? (me?.open ?? null) : a === "jam" ? (me?.openJam ?? null) : null;
       }
       if (stage.kind === "vsOpen") {
-        const opener = SEATS_DATA.seats[stage.opener];
+        const opener = data.seats[stage.opener];
         if (a === "call") return opener?.vsOpenCall?.[round.heroSeat] ?? null;
         if (a === "jam") return opener?.vsOpenJam?.[round.heroSeat] ?? null;
         return null;
@@ -814,10 +879,10 @@ export default function HandTrainer({
       if (stage.opener) return null;
       return stage.iOpened
         ? (me?.callJam?.[stage.jammer] ?? null)
-        : (SEATS_DATA.seats[stage.jammer]?.vsJamCall?.[round.heroSeat] ?? null);
+        : (data.seats[stage.jammer]?.vsJamCall?.[round.heroSeat] ?? null);
     });
     const view = fromRanges(
-      SEATS_DATA.hands,
+      data.hands,
       labels,
       turn.actions.map((a) => (a === "open" ? "raise" : a === "jam" ? "allin" : a)),
       ranges,
@@ -855,7 +920,7 @@ export default function HandTrainer({
         : decision,
     ]);
     setRound((cur) =>
-      cur ? { ...cur, game: applyHeroAction(SEATS_DATA, cur.game, action, Math.random) } : cur,
+      cur ? { ...cur, game: applyHeroAction(data, cur.game, action, Math.random) } : cur,
     );
   };
 
@@ -947,7 +1012,7 @@ export default function HandTrainer({
           {street} · {heroSeat}
         </div>
         <div className="gw-num text-[11px] text-[var(--gw-text-muted)]">
-          {runMode ? runMode.header : `${SEATS_DATA.stackBb}bb · 앤티 ${SEATS_DATA.anteBb}`}
+          {runMode ? runMode.header : `${data.stackBb}bb · 앤티 ${data.anteBb}`}
         </div>
       </header>
 
@@ -956,8 +1021,11 @@ export default function HandTrainer({
           <PokerTable
             tableSize={TABLE_SIZE}
             heroPosition={heroSeat}
-            stackBb={SEATS_DATA.stackBb}
-            anteBb={SEATS_DATA.anteBb}
+            stackBb={data.stackBb}
+            heroStackBb={
+              runMode?.stackBb === undefined ? undefined : Math.round(runMode.stackBb * 10) / 10
+            }
+            anteBb={data.anteBb}
             shoverPosition={null}
             awaitingAction={
               preTurnReady || (phase === "postflop" && postHeroTurn && boardSettled && !ending)
@@ -1063,7 +1131,7 @@ export default function HandTrainer({
                       : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
                 }`}
               >
-                {labelFor(SEATS_DATA, action)}
+                {actionText(action)}
               </button>
             ))}
           </div>
