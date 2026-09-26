@@ -42,3 +42,26 @@ export function flopChips(opener: string, caller: string): { pot: number; stack:
   const stack = STACK_BB - OPEN_TO_BB - (caller === "BB" ? ANTE_BB : 0);
   return { pot: Math.round(pot * 10), stack: Math.round(stack * 10) };
 }
+
+/** 3벳 크기(bb). 블라인드는 오프너보다 먼저 치는 자리라 더 크게 친다. */
+export function threeBetTo(seat: string): number {
+  return seat === "SB" || seat === "BB" ? 9 : 7.5;
+}
+
+/**
+ * 3벳 팟의 플랍 시점 팟과 유효 스택(칩, 1칩 = 0.1bb).
+ *
+ *   팟 = 3벳액 × 2 + 판에 안 낀 블라인드(죽은 돈) + 앤티
+ *   유효 스택 = 스택 − 3벳액 − (3벳한 쪽이 BB면 앤티까지)
+ *
+ * BB의 앤티는 3벳액과 따로 이미 낸 죽은 돈이다. 오프너의 블라인드(SB 오픈)는
+ * 3벳에 콜하는 금액 안에 들어 있다.
+ */
+export function threeBetChips(opener: string, threeBettor: string): { pot: number; stack: number } {
+  const t = threeBetTo(threeBettor);
+  const inHand = new Set([opener, threeBettor]);
+  const dead = (inHand.has("SB") ? 0 : 0.5) + (inHand.has("BB") ? 0 : 1);
+  const pot = 2 * t + dead + ANTE_BB;
+  const stack = STACK_BB - t - (threeBettor === "BB" ? ANTE_BB : 0);
+  return { pot: Math.round(pot * 10), stack: Math.round(stack * 10) };
+}
