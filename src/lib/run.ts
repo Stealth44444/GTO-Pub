@@ -30,8 +30,13 @@ export type RunState = {
    * 칩 증감에서 이걸 빼면 실력으로 번 몫이 남는다.
    */
   luck: number;
+  /** 남은 리바이. 매장처럼 한 번. */
+  rebuysLeft: number;
   over: null | "bust" | "done";
 };
+
+/** 매장 토너먼트처럼 버스트하면 한 번 다시 산다. */
+export const REBUYS = 1;
 
 export function startRun(): RunState {
   return {
@@ -41,8 +46,28 @@ export function startRun(): RunState {
     lossBb: 0,
     graded: 0,
     luck: 0,
+    rebuysLeft: REBUYS,
     over: null,
   };
+}
+
+/**
+ * 버스트한 런을 다시 산다. 받는 칩은 시작 칩 그대로라, 블라인드가 오른 뒤에는
+ * 더 적은 bb다 — 늦게 떨어질수록 리바이의 값이 줄어드는 것도 토너먼트다.
+ */
+export function rebuy(state: RunState): RunState {
+  if (state.over !== "bust" || state.rebuysLeft <= 0) return state;
+  return {
+    ...state,
+    chips: RUN_START_BB,
+    rebuysLeft: state.rebuysLeft - 1,
+    over: state.hands >= RUN_HANDS ? "done" : null,
+  };
+}
+
+/** 이 런에 들인 칩(1레벨 bb). 칩 증감은 여기서 잰다. */
+export function boughtIn(state: RunState): number {
+  return RUN_START_BB * (1 + REBUYS - state.rebuysLeft);
 }
 
 /** 지금 판의 레벨(0부터). */
@@ -81,6 +106,7 @@ export function applyHand(
     luck:
       Math.round((state.luck + (result.netBb - (result.evNetBb ?? result.netBb)) * mult) * 100) /
       100,
+    rebuysLeft: state.rebuysLeft,
     over: chips <= 0 ? "bust" : hands >= RUN_HANDS ? "done" : null,
   };
 }

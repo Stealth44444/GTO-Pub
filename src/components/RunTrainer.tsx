@@ -6,6 +6,9 @@ import { loadDepthData } from "@/lib/depthLoader";
 import type { SeatsData } from "@/lib/seatGame";
 import {
   applyHand,
+  boughtIn,
+  LEVEL_MULT,
+  rebuy,
   exactStackBb,
   levelOf,
   playDepth,
@@ -55,6 +58,7 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
     return (
       <RunSummary
         state={state}
+        onRebuy={() => setState((s) => rebuy(s))}
         onAgain={() => {
           setState(startRun());
           setRunId((n) => n + 1);
@@ -95,7 +99,9 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
       key={`${runId}-${depth}`}
       run={{
         onHandDone: (o) => setState((s) => applyHand(s, o)),
-        header: `L${levelOf(state) + 1} · ${state.hands + 1}/${RUN_HANDS} · ${stackBb(state)}bb`,
+        header: `L${levelOf(state) + 1} · ${state.hands + 1}/${RUN_HANDS} · ${stackBb(state)}bb${
+          state.rebuysLeft > 0 ? ` · 리바이 ${state.rebuysLeft}` : ""
+        }`,
         data,
         capBb: stakeCap(state, depth),
       }}
@@ -105,16 +111,21 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
 
 function RunSummary({
   state,
+  onRebuy,
   onAgain,
   onExit,
 }: {
   state: RunState;
+  onRebuy: () => void;
   onAgain: () => void;
   onExit: () => void;
 }) {
   const avg = state.graded > 0 ? state.lossBb / state.graded : null;
-  /** 칩 증감(1레벨 bb). */
-  const net = state.chips - RUN_START_BB;
+  /** 칩 증감(1레벨 bb). 리바이로 받은 칩은 번 것이 아니다. */
+  const net = state.chips - boughtIn(state);
+  const canRebuy = state.over === "bust" && state.rebuysLeft > 0;
+  // 리바이로 받는 칩을 지금 레벨의 bb로. 늦게 떨어질수록 적다.
+  const rebuyBb = Math.round((RUN_START_BB / LEVEL_MULT[levelOf(state)]) * 10) / 10;
   // 런 전체의 판단 품질. 한 판의 등급과 같은 기준을 판단당 평균 손실에 댄다.
   const grade = avg === null ? null : gradeByEvLoss(avg);
   return (
@@ -142,7 +153,17 @@ function RunSummary({
         <Stat label="운을 뺀 손익" value={`${signed(net - state.luck)}bb`} />
       </dl>
 
-      <div className="mt-10 grid grid-cols-[1fr_1.4fr] gap-2">
+      {canRebuy && (
+        <button
+          type="button"
+          onClick={onRebuy}
+          className="mt-10 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-3.5 text-[15px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
+        >
+          리바이 — {rebuyBb}bb로 이어서
+        </button>
+      )}
+
+      <div className={`${canRebuy ? "mt-2" : "mt-10"} grid grid-cols-[1fr_1.4fr] gap-2`}>
         <button
           type="button"
           onClick={onExit}

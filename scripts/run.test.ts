@@ -10,6 +10,8 @@ import {
   RUN_DEPTHS,
   RUN_HANDS,
   RUN_START_BB,
+  boughtIn,
+  rebuy,
   stackBb,
   stakeCap,
   startRun,
@@ -73,6 +75,20 @@ expect(playDepth(26, [20, 30]), 20, "가깝더라도 스택보다 깊은 쪽은 
 expect(playDepth(13.3, RUN_DEPTHS), 12, "13.3bb는 12bb");
 expect(playDepth(40, RUN_DEPTHS), 20, "20bb를 넘으면 20bb");
 expect(playDepth(5, RUN_DEPTHS), 8, "가장 얕은 깊이보다 적으면 그 깊이");
+
+console.log("리바이");
+{
+  let s = applyHand(startRun(), { netBb: -RUN_START_BB, lossBb: 0, graded: 1 });
+  expect([s.over, s.rebuysLeft], ["bust", 1], "버스트해도 리바이가 남아 있다");
+  s = rebuy(s);
+  expect([s.over, s.chips, s.rebuysLeft], [null, RUN_START_BB, 0], "리바이하면 시작 칩");
+  expect(boughtIn(s), RUN_START_BB * 2, "들인 칩은 두 번");
+  s = applyHand(s, { netBb: -RUN_START_BB, lossBb: 0, graded: 1 });
+  expect(s.over, "bust", "다시 버스트");
+  expect(rebuy(s), s, "리바이가 없으면 그대로");
+  const done = { ...startRun(), over: "done" as const };
+  expect(rebuy(done), done, "버스트가 아니면 그대로");
+}
 
 console.log("운");
 {
