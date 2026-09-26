@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { gradeByEvLoss } from "@/lib/grading";
 import { loadDepthData } from "@/lib/depthLoader";
+import { hasBoards } from "@/lib/spotLibrary";
 import type { SeatsData } from "@/lib/seatGame";
 import {
   applyHand,
@@ -12,6 +13,7 @@ import {
   exactStackBb,
   levelOf,
   playDepth,
+  DEEP_DEPTHS,
   RUN_DEPTHS,
   RUN_HANDS,
   RUN_START_BB,
@@ -34,13 +36,28 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  // 스택이 줄면 얕은 깊이의 풀이로 넘어간다. 20bb 풀이로 10bb 판을 치면 정답이
-  // 다른 게임의 것이 된다.
-  const depth = playDepth(exactStackBb(state), RUN_DEPTHS);
-  const data = loaded?.depth === depth ? loaded.data : null;
+  /** 칠 수 있는 깊이. 깊은 깊이는 보드가 올라가 있는지 본 뒤에 더한다. */
+  const [depths, setDepths] = useState<number[] | null>(null);
 
   useEffect(() => {
-    if (data) return;
+    let alive = true;
+    void Promise.all(DEEP_DEPTHS.map((d) => hasBoards(d).then((ok) => (ok ? d : null)))).then(
+      (found) => {
+        if (alive) setDepths([...found.filter((d): d is number => d !== null), ...RUN_DEPTHS]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 스택이 줄면 얕은 깊이의 풀이로 넘어간다. 20bb 풀이로 10bb 판을 치면 정답이
+  // 다른 게임의 것이 된다.
+  const depth = depths ? playDepth(exactStackBb(state), depths) : null;
+  const data = depth !== null && loaded?.depth === depth ? loaded.data : null;
+
+  useEffect(() => {
+    if (data || depth === null) return;
     let alive = true;
     loadDepthData(depth)
       .then((d) => {
@@ -85,7 +102,7 @@ export default function RunTrainer({ onExit }: { onExit: () => void }) {
       </div>
     );
   }
-  if (!data) {
+  if (!data || depth === null) {
     return (
       <div className="flex h-full items-center justify-center">
         <p className="gw-label animate-[gw-thinking_1200ms_ease-in-out_infinite]">준비 중</p>

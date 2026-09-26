@@ -369,6 +369,11 @@ export default function HandTrainer({
 }) {
   const data = runMode?.data ?? SEATS_DATA;
   /**
+   * 플랍 보드를 받을 깊이. 오픈이 없는 푸시/폴드 깊이는 플랍에 가지 않아 그
+   * 깊이의 보드가 없다 — 거기서 목록을 달라고 하면 판이 오류로 멈춘다.
+   */
+  const boardDepth = data.openToBb > 0 ? data.stackBb : SEATS_DATA.stackBb;
+  /**
    * 버튼과 판단 기록에 쓰는 액션 이름. 스택이 깊이보다 적으면 올인은 실제로
    * 거는 금액으로 적는다 — 4.8bb를 들고 "올인 8bb"를 누르게 하면 안 된다.
    */
@@ -464,16 +469,16 @@ export default function HandTrainer({
   useEffect(() => {
     // 3벳 올인 뒷자리의 EV는 승률표로 낸다. 받기 전에 딜된 판은 그 자리가 접는다.
     void loadEquity().then(setEquityTable);
-    loadSpotIndex()
+    loadSpotIndex(boardDepth)
       .then((list) => {
         setEntries(list);
-        prefetchSpot(pickSpotEntry(list, Math.random));
+        prefetchSpot(pickSpotEntry(list, Math.random), boardDepth);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "보드 목록을 불러오지 못했습니다"),
       );
     return clearTimers;
-  }, [clearTimers]);
+  }, [clearTimers, boardDepth]);
 
   // 아직 안 보여준 스텝이 있으면 한 박자씩 넘긴다.
   useEffect(() => {
@@ -640,7 +645,7 @@ export default function HandTrainer({
     // BB 콜)으로 떨어지는데, 그건 콜러가 오프너보다 먼저 치는 조건이다. 콜러가
     // IP면 역할이 뒤바뀌어 쓸 수 없으므로 판을 접는다.
     const callerIp = outcome.caller !== "BB" && outcome.caller !== "SB";
-    void spotsForPair(openerSeat, outcome.caller)
+    void spotsForPair(openerSeat, outcome.caller, boardDepth)
       .then((found) => {
         if (!found && callerIp) throw new Error("no-ip-boards");
         const pool = found?.list ?? entries;
@@ -648,7 +653,7 @@ export default function HandTrainer({
         // 프리플랍에서 보던 카드의 무늬가 플랍에서 바뀐다.
         const entry = pickSpotEntry(pool, Math.random, round.entry?.file, new Set(round.heroCombo));
         const fit: "exact" | "opener" | "none" = found?.fit ?? "none";
-        return loadSpot(entry).then(async (spot) => {
+        return loadSpot(entry, boardDepth).then(async (spot) => {
           await settled;
           return { spot, entry, pool, fit };
         });
@@ -703,7 +708,7 @@ export default function HandTrainer({
             : cur,
         );
         setPhase("postflop");
-        prefetchSpot(pickSpotEntry(pool, Math.random, entry.file));
+        prefetchSpot(pickSpotEntry(pool, Math.random, entry.file), boardDepth);
       })
       .catch((err: unknown) => {
         setEnding(
@@ -729,6 +734,7 @@ export default function HandTrainer({
     heroInFlop,
     newRound,
     data.anteBb,
+    boardDepth,
   ]);
 
   // 포스트플랍에서 상대 차례면 솔브된 전략대로 친다.

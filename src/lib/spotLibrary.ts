@@ -4,7 +4,7 @@
 // 실제로 칠 보드만 내려받는다. 다음 판에 쓸 보드는 미리 받아둬서, 판이
 // 끝나고 다음 판을 시작할 때 기다리지 않게 한다.
 
-import { BOARD_PREFIX } from "./seatsData";
+import { SEATS_DATA } from "./seatsData";
 import type { SolvedSpot } from "./tree";
 
 export type SpotEntry = {
@@ -21,19 +21,28 @@ export type SpotEntry = {
 // Storage의 공개 버킷에 둔다(scripts/upload-boards.ts). 공개 읽기 전용이라
 // 주소를 코드에 둬도 된다. 로컬 public/postflop으로 돌리려면
 // NEXT_PUBLIC_POSTFLOP_BASE=/postflop.
-const BASE =
-  process.env.NEXT_PUBLIC_POSTFLOP_BASE ||
-  `https://aenvvzxtafuwqybwdiqw.supabase.co/storage/v1/object/public/postflop/${BOARD_PREFIX}`;
+//
+// 깊이마다 보드가 따로 있다. 20bb는 예전 이름(v1) 그대로이고 나머지는 꼬리표를
+// 붙인다(scripts/game.ts의 withDepth와 같은 규칙). 로컬 폴더도 같다 —
+// public/postflop, public/postflop-30bb.
+const REMOTE = "https://aenvvzxtafuwqybwdiqw.supabase.co/storage/v1/object/public/postflop";
 
-let index: SpotEntry[] | null = null;
-let indexPending: Promise<SpotEntry[]> | null = null;
+/** 앱의 기본 깊이. 깊이를 주지 않은 호출은 이 깊이의 보드를 쓴다. */
+const DEFAULT_DEPTH = SEATS_DATA.stackBb;
+
+function baseFor(depth: number): string {
+  const suffix = depth === 20 ? "" : `-${depth}bb`;
+  const local = process.env.NEXT_PUBLIC_POSTFLOP_BASE;
+  return local ? `${local}${suffix}` : `${REMOTE}/v1${suffix}`;
+}
+
+const indexes = new Map<number, Promise<SpotEntry[]>>();
 
 /**
  * 오프너 자리 구간별 보드. 있으면 자리에 맞는 걸 쓰고, 없으면 기본 목록으로
  * 떨어진다 — 그건 BTN 오픈-BB 콜 조건이라 다른 자리 조합에는 근사다.
  */
-let buckets: Record<string, SpotEntry[]> | null = null;
-let bucketPending: Promise<Record<string, SpotEntry[]>> | null = null;
+const bucketSets = new Map<number, Promise<Record<string, SpotEntry[]>>>();
 
 /** 어느 자리가 어느 구간인가. 오픈 레인지 폭이 비슷한 자리끼리 묶는다. */
 const BUCKET_OF: Record<string, string> = {
@@ -51,20 +60,28 @@ export function bucketForOpener(seat: string): string | null {
   return BUCKET_OF[seat] ?? null;
 }
 
-function loadBuckets(): Promise<Record<string, SpotEntry[]>> {
-  if (buckets) return Promise.resolve(buckets);
-  bucketPending ??= fetch(`${BASE}/index-buckets.json`)
-    .then((res) => (res.ok ? (res.json() as Promise<{ buckets: Record<string, SpotEntry[]> }>) : null))
-    .then((raw) => {
-      buckets = raw?.buckets ?? {};
-      return buckets;
-    })
-    .catch(() => {
+function loadBuckets(depth: number): Promise<Record<string, SpotEntry[]>> {
+  let pending = bucketSets.get(depth);
+  if (!pending) {
+    pending = fetch(`${baseFor(depth)}/index-buckets.json`)
+      .then((res) =>
+        res.ok ? (res.json() as Promise<{ buckets: Record<string, SpotEntry[]> }>) : null,
+      )
+      .then((raw) => raw?.buckets ?? {})
       // 아직 만들어지지 않았다. 기본 목록으로 간다.
-      buckets = {};
-      return buckets;
-    });
-  return bucketPending;
+      .catch(() => ({}));
+    bucketSets.set(depth, pending);
+  }
+  return pending;
+}
+
+/**
+ * 이 깊이의 보드가 올라가 있는가. 런은 이걸 보고 그 깊이를 칠지 정한다 —
+ * 프리플랍 풀이만 있고 보드가 없으면 플랍에서 판이 멈춘다.
+ */
+export async function hasBoards(depth: number): Promise<boolean> {
+  const all = await loadBuckets(depth);
+  return Object.values(all).some((list) => list.length > 0);
 }
 
 /**
@@ -91,10 +108,11 @@ function callerSuffix(caller: string): string {
 export async function spotsForPair(
   opener: string,
   caller: string,
+  depth = DEFAULT_DEPTH,
 ): Promise<{ list: SpotEntry[]; fit: "exact" | "opener" } | null> {
   const base = bucketForOpener(opener);
   if (!base) return null;
-  const all = await loadBuckets();
+  const all = await loadBuckets(depth);
   const exact = all[`${base}${callerSuffix(caller)}`];
   if (exact && exact.length > 0) return { list: exact, fit: "exact" };
   if (caller === "SB" && all[base]?.length) return { list: all[base], fit: "opener" };
@@ -104,30 +122,38 @@ export async function spotsForPair(
 const cache = new Map<string, SolvedSpot>();
 const inFlight = new Map<string, Promise<SolvedSpot>>();
 
-export function spotIndexReady(): boolean {
-  return index !== null;
-}
-
-export function loadSpotIndex(): Promise<SpotEntry[]> {
-  if (index) return Promise.resolve(index);
-  indexPending ??= fetch(`${BASE}/index.json`)
-    .then((res) => {
-      if (!res.ok) throw new Error(`스팟 목록을 받지 못했습니다 (${res.status})`);
-      return res.json() as Promise<{ spots: SpotEntry[] }>;
-    })
-    .then((raw) => {
-      index = raw.spots;
-      return index;
-    });
-  return indexPending;
+/**
+ * 기본 목록(BTN 오픈-BB 콜). 구간에 맞는 보드가 없을 때 떨어지는 자리다.
+ *
+ * 20bb 말고는 기본 목록을 따로 만들지 않았다. 그때는 같은 조건의 구간(late,
+ * BTN 오픈-BB 콜)을 기본 목록으로 쓴다.
+ */
+export function loadSpotIndex(depth = DEFAULT_DEPTH): Promise<SpotEntry[]> {
+  let pending = indexes.get(depth);
+  if (!pending) {
+    pending = fetch(`${baseFor(depth)}/index.json`)
+      .then(async (res) => {
+        if (res.ok) return ((await res.json()) as { spots: SpotEntry[] }).spots;
+        const late = (await loadBuckets(depth)).late;
+        if (late?.length) return late;
+        throw new Error(`스팟 목록을 받지 못했습니다 (${res.status})`);
+      })
+      .catch((err: unknown) => {
+        // 실패한 약속을 붙잡고 있으면 다시 시도해도 계속 실패한다.
+        indexes.delete(depth);
+        throw err;
+      });
+    indexes.set(depth, pending);
+  }
+  return pending;
 }
 
 /**
  * 스팟은 gzip으로 저장돼 있다. 원본이 1MB, 압축본이 175KB라 저장소 크기가
  * 6배 차이 난다. 전송량은 어차피 서버가 압축해 같으므로 잃는 것이 없다.
  */
-async function fetchSpot(file: string): Promise<SolvedSpot> {
-  const res = await fetch(`${BASE}/${file}`);
+async function fetchSpot(file: string, depth: number): Promise<SolvedSpot> {
+  const res = await fetch(`${baseFor(depth)}/${file}`);
   if (!res.ok) throw new Error(`보드를 받지 못했습니다 (${res.status})`);
   const stream = res.body?.pipeThrough(new DecompressionStream("gzip"));
   if (!stream) throw new Error("보드를 푸는 데 실패했습니다");
@@ -139,34 +165,36 @@ async function fetchSpot(file: string): Promise<SolvedSpot> {
  * 이름으로 바로 찾는다 — 그 판을 칠 때 쓴 목록이 지금 목록과 같다는 보장이
  * 없기 때문이다.
  */
-export function loadSpotFile(file: string): Promise<SolvedSpot> {
-  const cached = cache.get(file);
+export function loadSpotFile(file: string, depth = DEFAULT_DEPTH): Promise<SolvedSpot> {
+  // 깊이가 다르면 같은 이름이라도 다른 보드다(폴더가 다르다).
+  const key = `${depth}:${file}`;
+  const cached = cache.get(key);
   if (cached) return Promise.resolve(cached);
 
-  let pending = inFlight.get(file);
+  let pending = inFlight.get(key);
   if (!pending) {
-    pending = fetchSpot(file)
+    pending = fetchSpot(file, depth)
       .then((spot) => {
-        cache.set(file, spot);
-        inFlight.delete(file);
+        cache.set(key, spot);
+        inFlight.delete(key);
         return spot;
       })
       .catch((err) => {
-        inFlight.delete(file);
+        inFlight.delete(key);
         throw err;
       });
-    inFlight.set(file, pending);
+    inFlight.set(key, pending);
   }
   return pending;
 }
 
-export function loadSpot(entry: SpotEntry): Promise<SolvedSpot> {
-  return loadSpotFile(entry.file);
+export function loadSpot(entry: SpotEntry, depth = DEFAULT_DEPTH): Promise<SolvedSpot> {
+  return loadSpotFile(entry.file, depth);
 }
 
 /** 다음 판에 쓸 보드를 미리 받아둔다. 실패해도 조용히 넘긴다 — 그때 다시 받으면 된다. */
-export function prefetchSpot(entry: SpotEntry): void {
-  void loadSpot(entry).catch(() => {});
+export function prefetchSpot(entry: SpotEntry, depth = DEFAULT_DEPTH): void {
+  void loadSpot(entry, depth).catch(() => {});
 }
 
 /**

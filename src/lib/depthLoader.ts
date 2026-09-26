@@ -14,10 +14,27 @@ export const FULL_DATA: SeatsData = SEATS_DATA;
 const cache = new Map<number, SeatsData>();
 let calls: Promise<CallsJson> | null = null;
 
+/**
+ * 기본 깊이보다 깊은 한 판 전체 풀이. 번들에 넣지 않고 그 깊이를 칠 때 받는다
+ * (파일 하나가 0.5MB다).
+ */
+const DEEP: Record<number, () => Promise<unknown>> = {
+  30: () => import("@/data/preflop-seats-30bb.json"),
+};
+
 export function loadDepthData(depthBb: number): Promise<SeatsData> {
-  if (depthBb >= FULL_DATA.stackBb) return Promise.resolve(FULL_DATA);
+  if (depthBb === FULL_DATA.stackBb) return Promise.resolve(FULL_DATA);
   const hit = cache.get(depthBb);
   if (hit) return Promise.resolve(hit);
+  const deep = DEEP[depthBb];
+  if (deep) {
+    return deep().then((m) => {
+      const data = ((m as { default?: unknown }).default ?? m) as SeatsData;
+      cache.set(depthBb, data);
+      return data;
+    });
+  }
+  if (depthBb > FULL_DATA.stackBb) return Promise.resolve(FULL_DATA);
   calls ??= import("@/data/pushfold-calls.json").then(
     (m) => (m.default ?? m) as unknown as CallsJson,
   );
