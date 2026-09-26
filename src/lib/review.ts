@@ -59,6 +59,8 @@ export function parseStage(line: string | null, seat: string): Stage | null {
   if (line === "firstIn") return { kind: "firstIn" };
   const [kind, who, opener] = line.split(":");
   if (kind === "vsOpen" && who) return { kind: "vsOpen", opener: who };
+  if (kind === "vsThreeBet" && who) return { kind: "vsThreeBet", threeBettor: who };
+  if (kind === "vsFourBet" && who) return { kind: "vsFourBet", opener: who };
   if (kind === "vsJam" && who) {
     // 내가 열었다가 3벳을 맞은 경우와 앞의 오픈 올인을 맞은 경우는 다르다.
     // 기록만으로는 갈라지지 않으므로, 3벳자가 내 뒤면 내가 연 것으로 본다.
@@ -190,6 +192,8 @@ export function pickPostflopSpots(
 export function describeStage(stage: Stage): string {
   if (stage.kind === "firstIn") return "앞이 모두 접었습니다";
   if (stage.kind === "vsOpen") return `${stage.opener}가 열었습니다`;
+  if (stage.kind === "vsThreeBet") return `내 오픈에 ${stage.threeBettor}가 3벳했습니다`;
+  if (stage.kind === "vsFourBet") return `내 3벳에 ${stage.opener}가 4벳 올인했습니다`;
   return `${stage.jammer}가 올인했습니다`;
 }
 

@@ -29,6 +29,9 @@ import { ALL_HANDS, seatNames } from "@/lib/poker";
 import {
   applyHeroAction,
   labelFor,
+  rangesAt,
+  recordKind,
+  stageLine,
   setEquityTable,
   startGame,
   type GameState,
@@ -373,17 +376,19 @@ export default function HandTrainer({
    * 깊이의 보드가 없다 — 거기서 목록을 달라고 하면 판이 오류로 멈춘다.
    */
   const boardDepth = data.openToBb > 0 ? data.stackBb : SEATS_DATA.stackBb;
+  const [entries, setEntries] = useState<SpotEntry[] | null>(null);
+  const [round, setRound] = useState<Round | null>(() => freshRound(data, seat, currentSkills()));
   /**
    * 버튼과 판단 기록에 쓰는 액션 이름. 스택이 깊이보다 적으면 올인은 실제로
    * 거는 금액으로 적는다 — 4.8bb를 들고 "올인 8bb"를 누르게 하면 안 된다.
+   * 3벳은 자리마다 크기가 달라 히어로 자리를 넘긴다.
    */
   const capBb = runMode?.capBb;
+  const heroSeatNow = round?.heroSeat;
   const actionText = (a: SeatAction) =>
     a === "jam" && capBb !== undefined
       ? `올인 ${Math.round(capBb * 10) / 10}bb`
-      : labelFor(data, a);
-  const [entries, setEntries] = useState<SpotEntry[] | null>(null);
-  const [round, setRound] = useState<Round | null>(() => freshRound(data, seat, currentSkills()));
+      : labelFor(data, a, heroSeatNow);
   const [phase, setPhase] = useState<Phase>("preflop");
   const [revealed, setRevealed] = useState(0);
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -603,7 +608,10 @@ export default function HandTrainer({
           : outcome.kind === "flop"
             ? // 내가 낀 판이 아니다. 바로 위에서 다시 돌리므로 보일 일은 없다.
               `${outcome.opener}와 ${outcome.caller}의 판입니다`
-            : outcome.winner === round.heroSeat
+            : outcome.kind === "threebetFlop"
+              ? // 3벳 팟 보드는 아직 없다(2단계). 프리플랍 판단까지만 채점한다.
+                "3벳 팟 — 플랍은 다음 단계에서 칩니다"
+              : outcome.winner === round.heroSeat
               ? "모두 폴드, 팟 획득"
               : `${outcome.winner} 팟 획득`;
       const t = window.setTimeout(() => {
@@ -868,25 +876,8 @@ export default function HandTrainer({
     const i = turn.actions.indexOf(action);
 
     // 이 상황의 레인지 전체. 액션 순서와 레인지 순서가 같아야 색이 맞는다.
-    const me = data.seats[round.heroSeat];
     const stage = turn.stage;
-    const ranges = turn.actions.map((a) => {
-      if (stage.kind === "firstIn") {
-        return a === "open" ? (me?.open ?? null) : a === "jam" ? (me?.openJam ?? null) : null;
-      }
-      if (stage.kind === "vsOpen") {
-        const opener = data.seats[stage.opener];
-        if (a === "call") return opener?.vsOpenCall?.[round.heroSeat] ?? null;
-        if (a === "jam") return opener?.vsOpenJam?.[round.heroSeat] ?? null;
-        return null;
-      }
-      if (a !== "call") return null;
-      // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.
-      if (stage.opener) return null;
-      return stage.iOpened
-        ? (me?.callJam?.[stage.jammer] ?? null)
-        : (data.seats[stage.jammer]?.vsJamCall?.[round.heroSeat] ?? null);
-    });
+    const ranges = rangesAt(data, round.heroSeat, stage, turn.actions);
     const view = fromRanges(
       data.hands,
       labels,
@@ -900,14 +891,10 @@ export default function HandTrainer({
       labels,
       turn.evBb,
       i,
-      turn.actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a)),
+      turn.actions.map(recordKind),
       [],
       view,
-      stage.kind === "firstIn"
-        ? "firstIn"
-        : stage.kind === "vsOpen"
-          ? `vsOpen:${stage.opener}`
-          : `vsJam:${stage.jammer}${stage.opener ? `:${stage.opener}` : ""}`,
+      stageLine(stage),
     );
     if (decision.lossBb !== null) noteLoss(situationKey(round.heroSeat, stage), decision.lossBb);
     setDecisions((prev) => [

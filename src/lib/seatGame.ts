@@ -18,13 +18,18 @@
 import { equityVsRange, type EquityTable } from "./equity.ts";
 import type { PreflopStep } from "./preflop";
 
-export type SeatAction = "fold" | "open" | "jam" | "call";
+export type SeatAction = "fold" | "open" | "jam" | "call" | "threebet";
 
 export type SeatsData = {
   tableSize: number;
   stackBb: number;
   anteBb: number;
   openToBb: number;
+  /**
+   * 크기가 있는 3벳. 오프너 뒤(IP)와 블라인드가 다르다. 없으면 3벳은 올인
+   * 하나뿐이다(지금 20bb 데이터).
+   */
+  threeBetToBb?: { ip: number; blind: number };
   hands: string[];
   seats: Record<
     string,
@@ -35,6 +40,13 @@ export type SeatsData = {
       vsOpenCall?: Record<string, Record<string, number>>;
       vsOpenJam?: Record<string, Record<string, number>>;
       vsJamCall?: Record<string, Record<string, number>>;
+      /** 오프너의 스팟 안: 뒤 자리(키)가 크기 있는 3벳을 하는 빈도. */
+      vsOpenThreeBet?: Record<string, Record<string, number>>;
+      /** 오프너의 3벳 대응. 키는 3벳한 자리. */
+      vsThreeBetCall?: Record<string, Record<string, number>>;
+      vsThreeBetJam?: Record<string, Record<string, number>>;
+      /** 3벳한 자리(키)가 오프너의 4벳 올인에 콜하는 빈도. */
+      vsFourBetCall?: Record<string, Record<string, number>>;
       foldEvBb: number;
       ev: {
         open: number[];
@@ -43,6 +55,10 @@ export type SeatsData = {
         vsOpenJam: Record<string, number[]>;
         callJam: Record<string, number[]>;
         vsJamCall: Record<string, number[]>;
+        vsOpenThreeBet?: Record<string, number[]>;
+        vsThreeBetCall?: Record<string, number[]>;
+        vsThreeBetJam?: Record<string, number[]>;
+        vsFourBetCall?: Record<string, number[]>;
       };
     }
   >;
@@ -60,7 +76,11 @@ export type Stage =
        * 앉은 자리). 솔버는 이 상황을 풀지 않았으므로 승률표로 EV를 낸다.
        */
       opener?: string;
-    };
+    }
+  /** 내가 열었고 뒤에서 크기 있는 3벳이 왔다 → 폴드 | 콜 | 4벳 올인. */
+  | { kind: "vsThreeBet"; threeBettor: string }
+  /** 내가 3벳했고 오프너가 4벳 올인했다 → 폴드 | 콜. */
+  | { kind: "vsFourBet"; opener: string };
 
 /**
  * 3벳 올인 뒤에 앉은 자리의 콜 EV를 낼 승률표. 앱이 받아서 넣어 준다.
@@ -105,6 +125,7 @@ export const ACTION_LABEL: Record<SeatAction, string> = {
   open: "오픈",
   jam: "올인",
   call: "콜",
+  threebet: "3벳",
 };
 
 /** 이 깊이에 오픈(레이즈)이 있는가. 푸시/폴드 깊이는 openToBb가 0이다. */
@@ -112,16 +133,41 @@ export function canOpen(data: SeatsData): boolean {
   return data.openToBb > 0;
 }
 
-export function actionsAt(stage: Stage, open = true): SeatAction[] {
+/** 이 깊이에 크기 있는 3벳이 있는가. 없으면 3벳은 올인 하나뿐이다. */
+export function canThreeBet(data: SeatsData): boolean {
+  return Boolean(data.threeBetToBb);
+}
+
+/** 이 자리의 3벳 크기(bb). 블라인드는 오프너보다 먼저 치므로 더 크다. */
+export function threeBetToOf(data: SeatsData, seat: string): number {
+  const size = data.threeBetToBb ?? { ip: 7.5, blind: 9 };
+  return seat === "SB" || seat === "BB" ? size.blind : size.ip;
+}
+
+export function actionsAt(stage: Stage, open = true, threeBet = false): SeatAction[] {
   if (stage.kind === "firstIn") return open ? ["fold", "open", "jam"] : ["fold", "jam"];
-  if (stage.kind === "vsOpen") return ["fold", "call", "jam"];
+  if (stage.kind === "vsOpen") {
+    return threeBet ? ["fold", "call", "threebet", "jam"] : ["fold", "call", "jam"];
+  }
+  if (stage.kind === "vsThreeBet") return ["fold", "call", "jam"];
   return ["fold", "call"];
 }
 
-export function labelFor(data: SeatsData, action: SeatAction): string {
+/** 이 데이터로 이 상황에서 고를 수 있는 액션. 엔진 안에서는 늘 이걸 쓴다. */
+function actionsFor(data: SeatsData, stage: Stage): SeatAction[] {
+  return actionsAt(stage, canOpen(data), canThreeBet(data));
+}
+
+export function labelFor(data: SeatsData, action: SeatAction, seat?: string): string {
   if (action === "open") return `오픈 ${data.openToBb}bb`;
   if (action === "jam") return `올인 ${data.stackBb}bb`;
+  if (action === "threebet") return seat ? `3벳 ${threeBetToOf(data, seat)}bb` : ACTION_LABEL.threebet;
   return ACTION_LABEL[action];
+}
+
+/** 3벳한 자리가 낸 총액. BB의 앤티는 3벳액과 따로 이미 낸 돈이다. */
+function threeBetPut(data: SeatsData, seat: string): number {
+  return threeBetToOf(data, seat) + (seat === "BB" ? data.anteBb : 0);
 }
 
 function handIndex(data: SeatsData, hand: string): number {
@@ -153,7 +199,7 @@ export function evAt(
   hand: string,
 ): (number | null)[] {
   const i = handIndex(data, hand);
-  if (i < 0) return actionsAt(stage, canOpen(data)).map(() => null);
+  if (i < 0) return actionsFor(data, stage).map(() => null);
   const me = data.seats[seat];
   const foldEv = -postedOf(data, seat);
 
@@ -163,10 +209,24 @@ export function evAt(
   }
   if (stage.kind === "vsOpen") {
     const opener = data.seats[stage.opener];
+    const call = opener?.ev?.vsOpenCall?.[seat]?.[i] ?? null;
+    const jam = opener?.ev?.vsOpenJam?.[seat]?.[i] ?? null;
+    if (!canThreeBet(data)) return [foldEv, call, jam];
+    return [foldEv, call, opener?.ev?.vsOpenThreeBet?.[seat]?.[i] ?? null, jam];
+  }
+  if (stage.kind === "vsThreeBet") {
+    // 이미 오픈액을 냈다. 접으면 그만큼 잃는다.
     return [
-      foldEv,
-      opener?.ev?.vsOpenCall?.[seat]?.[i] ?? null,
-      opener?.ev?.vsOpenJam?.[seat]?.[i] ?? null,
+      -data.openToBb,
+      me?.ev?.vsThreeBetCall?.[stage.threeBettor]?.[i] ?? null,
+      me?.ev?.vsThreeBetJam?.[stage.threeBettor]?.[i] ?? null,
+    ];
+  }
+  if (stage.kind === "vsFourBet") {
+    // 3벳액(BB는 앤티까지)을 냈다. 대응 EV는 오프너의 스팟 안에 있다.
+    return [
+      -threeBetPut(data, seat),
+      data.seats[stage.opener]?.ev?.vsFourBetCall?.[seat]?.[i] ?? null,
     ];
   }
   // 올인에 대응. 내가 열었다가 3벳을 맞은 경우와, 앞의 오픈 올인을 맞은 경우.
@@ -193,7 +253,7 @@ function freqAt(
   // 자기 데이터가 없으면 접는다. 단 자기 데이터를 읽는 상황에서만이다 — 오픈·올인
   // 대응 빈도는 오프너·올인한 자리의 데이터에 들어 있다. BB는 먼저 여는 스팟이
   // 없어 자기 항목이 없는데, 여기서 먼저 접어 버리면 AA로도 응답하지 않는다.
-  const foldOnly = () => actionsAt(stage, canOpen(data)).map((_, k) => (k === 0 ? 1 : 0));
+  const foldOnly = () => actionsFor(data, stage).map((_, k) => (k === 0 ? 1 : 0));
 
   if (stage.kind === "firstIn") {
     if (!me) return foldOnly();
@@ -206,7 +266,19 @@ function freqAt(
     const opener = data.seats[stage.opener];
     const call = get(opener?.vsOpenCall?.[seat]);
     const jam = get(opener?.vsOpenJam?.[seat]);
+    if (!canThreeBet(data)) return [Math.max(0, 1 - call - jam), call, jam];
+    const three = get(opener?.vsOpenThreeBet?.[seat]);
+    return [Math.max(0, 1 - call - three - jam), call, three, jam];
+  }
+  if (stage.kind === "vsThreeBet") {
+    if (!me) return foldOnly();
+    const call = get(me.vsThreeBetCall?.[stage.threeBettor]);
+    const jam = get(me.vsThreeBetJam?.[stage.threeBettor]);
     return [Math.max(0, 1 - call - jam), call, jam];
+  }
+  if (stage.kind === "vsFourBet") {
+    const call = get(data.seats[stage.opener]?.vsFourBetCall?.[seat]);
+    return [Math.max(0, 1 - call), call];
   }
   if (stage.iOpened) {
     if (!me) return foldOnly();
@@ -242,7 +314,7 @@ export function sampleAction(
   hand: string,
   rnd: () => number,
 ): SeatAction {
-  const actions = actionsAt(stage, canOpen(data));
+  const actions = actionsFor(data, stage);
   return actions[pick(freqAt(data, seat, stage, hand), rnd)];
 }
 
@@ -251,7 +323,9 @@ export function sampleAction(
 export type Outcome =
   | { kind: "folded"; winner: string }
   | { kind: "allin"; a: string; b: string }
-  | { kind: "flop"; opener: string; caller: string };
+  | { kind: "flop"; opener: string; caller: string }
+  /** 크기 있는 3벳에 오프너가 콜했다. 3벳 팟 플랍으로 간다. */
+  | { kind: "threebetFlop"; opener: string; threeBettor: string };
 
 export type Turn = { stage: Stage; actions: SeatAction[]; evBb: (number | null)[] };
 
@@ -268,6 +342,8 @@ export type GameState = {
   cursor: number;
   opener: string | null;
   jammer: string | null;
+  /** 크기 있는 3벳을 한 자리. 3벳이 없으면 null. */
+  threeBettor?: string | null;
 };
 
 const posted = (data: SeatsData, seats: string[], seat: string) =>
@@ -289,8 +365,16 @@ function stepFor(
   action: SeatAction,
   keptBb?: number,
   facingJam = false,
+  /** 3벳에 콜하면 그 3벳액까지 낸다. 없으면 오픈 콜이다. */
+  callToBb?: number,
 ): PreflopStep {
   const ante = seat === seats[seats.length - 1] ? data.anteBb : 0;
+  if (action === "threebet") {
+    return { seat, kind: "raise", committedBb: threeBetToOf(data, seat) + ante };
+  }
+  if (action === "call" && callToBb !== undefined && !facingJam) {
+    return { seat, kind: "call", committedBb: callToBb + ante };
+  }
   if (action === "fold") {
     // 이미 오픈한 자리가 접으면 오픈액은 팟에 남는다. 블라인드로 되돌리면
     // 자리 앞의 칩이 줄어든다.
@@ -326,6 +410,79 @@ function foldOpenerAfterSqueeze(data: SeatsData, s: GameState) {
   s.steps.push(stepFor(data, s.seats, s.opener, "fold", data.openToBb));
 }
 
+/** 이 상황의 차례를 만든다. 흐름이 상황을 직접 정하는 곳(3벳·4벳)에서 쓴다. */
+function turnWith(data: SeatsData, state: GameState, seat: string, stage: Stage): Turn {
+  return { stage, actions: actionsFor(data, stage), evBb: evAt(data, seat, stage, state.hands[seat]) };
+}
+
+/**
+ * 크기 있는 3벳이 나왔다. 뒤 자리들은 이미 접었고(콜드 콜·콜드 4벳은 다루지
+ * 않는다) 오프너가 답한다: 폴드 | 콜 → 3벳 팟 | 4벳 올인.
+ */
+function answerThreeBet(data: SeatsData, s: GameState, rnd: () => number): GameState {
+  const opener = s.opener!;
+  const threeBettor = s.threeBettor!;
+  const stage: Stage = { kind: "vsThreeBet", threeBettor };
+  if (opener === s.heroSeat) {
+    s.turn = turnWith(data, s, opener, stage);
+    return s;
+  }
+  const reply = sampleAction(data, opener, stage, s.hands[opener], rnd);
+  return settleThreeBetReply(data, s, reply, rnd);
+}
+
+/** 오프너가 3벳에 답한 뒤. 히어로의 답과 상대의 답이 같은 길을 간다. */
+function settleThreeBetReply(
+  data: SeatsData,
+  s: GameState,
+  reply: SeatAction,
+  rnd: () => number,
+): GameState {
+  const opener = s.opener!;
+  const threeBettor = s.threeBettor!;
+  // 폴드는 오픈액을 남기고, 콜은 3벳액까지 낸다.
+  s.steps.push(
+    stepFor(data, s.seats, opener, reply, data.openToBb, false, threeBetToOf(data, threeBettor)),
+  );
+  s.turn = null;
+  if (reply === "fold") {
+    s.outcome = { kind: "folded", winner: threeBettor };
+    return s;
+  }
+  if (reply === "call") {
+    s.outcome = { kind: "threebetFlop", opener, threeBettor };
+    return s;
+  }
+  s.jammer = opener;
+  return answerFourBet(data, s, rnd);
+}
+
+/** 오프너가 4벳 올인했다. 3벳한 자리가 답한다: 폴드 | 콜. */
+function answerFourBet(data: SeatsData, s: GameState, rnd: () => number): GameState {
+  const opener = s.opener!;
+  const threeBettor = s.threeBettor!;
+  const stage: Stage = { kind: "vsFourBet", opener };
+  if (threeBettor === s.heroSeat) {
+    s.turn = turnWith(data, s, threeBettor, stage);
+    return s;
+  }
+  const reply = sampleAction(data, threeBettor, stage, s.hands[threeBettor], rnd);
+  return settleFourBetReply(data, s, reply);
+}
+
+function settleFourBetReply(data: SeatsData, s: GameState, reply: SeatAction): GameState {
+  const opener = s.opener!;
+  const threeBettor = s.threeBettor!;
+  // 폴드는 3벳액을 남기고, 콜은 스택 전부다.
+  s.steps.push(stepFor(data, s.seats, threeBettor, reply, threeBetPut(data, threeBettor), true));
+  s.turn = null;
+  s.outcome =
+    reply === "fold"
+      ? { kind: "folded", winner: opener }
+      : { kind: "allin", a: opener, b: threeBettor };
+  return s;
+}
+
 function stageFor(state: GameState, seat: string): Stage {
   if (state.jammer) {
     const iOpened = state.opener === seat;
@@ -342,7 +499,7 @@ function stageFor(state: GameState, seat: string): Stage {
 
 function turnFor(data: SeatsData, state: GameState, seat: string): Turn {
   const stage = stageFor(state, seat);
-  return { stage, actions: actionsAt(stage, canOpen(data)), evBb: evAt(data, seat, stage, state.hands[seat]) };
+  return { stage, actions: actionsFor(data, stage), evBb: evAt(data, seat, stage, state.hands[seat]) };
 }
 
 /**
@@ -397,6 +554,13 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     if (action === "open") {
       s.opener = seat;
       continue;
+    }
+
+    if (action === "threebet") {
+      // 뒤 자리들이 차례로 접고(단순화), 그다음 오프너가 답한다.
+      s.threeBettor = seat;
+      foldRest(data, s);
+      return answerThreeBet(data, s, rnd);
     }
 
     if (action === "call") {
@@ -462,6 +626,26 @@ export function applyHeroAction(
 ): GameState {
   if (!state.turn) return state;
   const stage = state.turn.stage;
+
+  // 크기 있는 3벳의 세 갈래. 스텝은 각 갈래가 알맞은 금액으로 적는다.
+  if (action === "threebet") {
+    const s: GameState = {
+      ...state,
+      steps: [...state.steps, stepFor(data, state.seats, state.heroSeat, "threebet")],
+      turn: null,
+      cursor: state.cursor + 1,
+      threeBettor: state.heroSeat,
+    };
+    foldRest(data, s);
+    return answerThreeBet(data, s, rnd);
+  }
+  if (stage.kind === "vsThreeBet") {
+    return settleThreeBetReply(data, { ...state, steps: [...state.steps] }, action, rnd);
+  }
+  if (stage.kind === "vsFourBet") {
+    return settleFourBetReply(data, { ...state, steps: [...state.steps] }, action);
+  }
+
   const facingJam = stage.kind === "vsJam";
   // 내가 열었다가 올인에 접으면 오픈액은 팟에 남는다. 다른 자리는 advance가
   // 같은 처리를 한다.
@@ -518,4 +702,64 @@ export function applyHeroAction(
   s.jammer = state.heroSeat;
   s.cursor += 1;
   return advance(data, s, rnd);
+}
+
+/** 기록에 남기는 상황 이름. 복습이 review.ts의 parseStage로 되살린다. */
+export function stageLine(stage: Stage): string {
+  if (stage.kind === "firstIn") return "firstIn";
+  if (stage.kind === "vsOpen") return `vsOpen:${stage.opener}`;
+  if (stage.kind === "vsThreeBet") return `vsThreeBet:${stage.threeBettor}`;
+  if (stage.kind === "vsFourBet") return `vsFourBet:${stage.opener}`;
+  return `vsJam:${stage.jammer}${stage.opener ? `:${stage.opener}` : ""}`;
+}
+
+/**
+ * 이 상황에서 액션마다 그 자리가 치는 레인지. 격자를 칠할 때 쓴다. 풀린
+ * 레인지가 없는 액션(폴드, 스퀴즈 콜)은 null이다.
+ *
+ * 화면마다 따로 만들면 새 상황이 생길 때 한쪽만 고쳐져 격자가 틀린 색을 칠한다.
+ */
+export function rangesAt(
+  data: SeatsData,
+  seat: string,
+  stage: Stage,
+  actions: SeatAction[],
+): (Record<string, number> | null)[] {
+  const me = data.seats[seat];
+  return actions.map((a) => {
+    if (stage.kind === "firstIn") {
+      return a === "open" ? (me?.open ?? null) : a === "jam" ? (me?.openJam ?? null) : null;
+    }
+    if (stage.kind === "vsOpen") {
+      const opener = data.seats[stage.opener];
+      if (a === "call") return opener?.vsOpenCall?.[seat] ?? null;
+      if (a === "threebet") return opener?.vsOpenThreeBet?.[seat] ?? null;
+      if (a === "jam") return opener?.vsOpenJam?.[seat] ?? null;
+      return null;
+    }
+    if (stage.kind === "vsThreeBet") {
+      if (a === "call") return me?.vsThreeBetCall?.[stage.threeBettor] ?? null;
+      if (a === "jam") return me?.vsThreeBetJam?.[stage.threeBettor] ?? null;
+      return null;
+    }
+    if (stage.kind === "vsFourBet") {
+      return a === "call" ? (data.seats[stage.opener]?.vsFourBetCall?.[seat] ?? null) : null;
+    }
+    if (a !== "call") return null;
+    // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.
+    if (stage.opener) return null;
+    return stage.iOpened
+      ? (me?.callJam?.[stage.jammer] ?? null)
+      : (data.seats[stage.jammer]?.vsJamCall?.[seat] ?? null);
+  });
+}
+
+/**
+ * 기록에 남기는 액션 종류. DB의 허용 값(fold/call/open/raise/allin …)에 맞춘다 —
+ * 3벳은 레이즈다. 3벳이었다는 사실은 상황 이름(stageLine)이 갖고 있다.
+ */
+export function recordKind(action: SeatAction): string {
+  if (action === "jam") return "allin";
+  if (action === "threebet") return "raise";
+  return action;
 }

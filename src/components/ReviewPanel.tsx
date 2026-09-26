@@ -2,7 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { SEATS_DATA } from "@/lib/seatsData";
-import { actionsAt, evAt, labelFor, type SeatAction } from "@/lib/seatGame";
+import {
+  actionsAt,
+  canOpen,
+  canThreeBet,
+  evAt,
+  labelFor,
+  rangesAt,
+  recordKind,
+  stageLine,
+  type SeatAction,
+} from "@/lib/seatGame";
 import { fromRanges } from "@/lib/rangeGrid";
 import { ensureGuestUser, logReview } from "@/lib/attempts";
 import { makeDecision } from "@/lib/decisions";
@@ -74,12 +84,12 @@ export default function ReviewPanel() {
     );
   }
 
-  const actions = actionsAt(spot.stage);
-  const labels = actions.map((a) => labelFor(DATA, a));
+  const actions = actionsAt(spot.stage, canOpen(DATA), canThreeBet(DATA));
+  const labels = actions.map((a) => labelFor(DATA, a, spot.seat));
   const ev = evAt(DATA, spot.seat, spot.stage, spot.handCode);
   // 기록에는 종류가 들어가야 한다. 라벨("올인 20bb")을 그대로 넣으면 집계도
   // 안 되고 DB의 액션 제약에도 걸린다.
-  const kinds = actions.map((a) => (a === "open" ? "open" : a === "jam" ? "allin" : a));
+  const kinds = actions.map(recordKind);
   const decision =
     picked !== null
       ? makeDecision("PREFLOP", labels, ev, actions.indexOf(picked), kinds)
@@ -104,31 +114,12 @@ export default function ReviewPanel() {
         userAction: d.chosenKind,
         correctAction: d.bestKind,
         evLossBb: d.lossBb,
-        nodeLine: spot.stage.kind === "firstIn"
-          ? "firstIn"
-          : spot.stage.kind === "vsOpen"
-            ? `vsOpen:${spot.stage.opener}`
-            : `vsJam:${spot.stage.jammer}${spot.stage.opener ? `:${spot.stage.opener}` : ""}`,
+        nodeLine: stageLine(spot.stage),
       }),
     );
   };
 
-  const me = DATA.seats[spot.seat];
-  const ranges = actions.map((a) => {
-    if (spot.stage.kind === "firstIn") {
-      return a === "open" ? (me?.open ?? null) : a === "jam" ? (me?.openJam ?? null) : null;
-    }
-    if (spot.stage.kind === "vsOpen") {
-      const opener = DATA.seats[spot.stage.opener];
-      if (a === "call") return opener?.vsOpenCall?.[spot.seat] ?? null;
-      if (a === "jam") return opener?.vsOpenJam?.[spot.seat] ?? null;
-      return null;
-    }
-    if (a !== "call") return null;
-    // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.
-    if (spot.stage.opener) return null;
-    return DATA.seats[spot.stage.jammer]?.vsJamCall?.[spot.seat] ?? null;
-  });
+  const ranges = rangesAt(DATA, spot.seat, spot.stage, actions);
   const gridView = fromRanges(
     DATA.hands,
     labels,

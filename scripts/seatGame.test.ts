@@ -6,12 +6,14 @@ import {
   actionsAt,
   applyHeroAction,
   canOpen,
+  canThreeBet,
   evAt,
   labelFor,
   sampleAction,
   setEquityTable,
   squeezeCallEv,
   startGame,
+  type GameState,
   type SeatsData,
 } from "../src/lib/seatGame.ts";
 import { seatNames } from "../src/lib/poker.ts";
@@ -374,6 +376,152 @@ console.log("오픈 없는 깊이");
   expect(called.outcome, { kind: "allin", a: "UTG", b: "SB" }, "SB가 콜하면 올인 대결");
   const callStep = called.steps.find((st) => st.seat === "SB");
   expect(callStep?.committedBb, 10, "올인에 콜한 SB는 스택 전부를 낸다");
+}
+
+// ── 크기가 있는 3벳 ─────────────────────────────────────────────────────
+
+/**
+ * 핸드 세 개짜리 가짜 30bb 데이터. 빈도가 0 아니면 1이라 결과가 정해져 있다.
+ * AA·KK만 열고, 뒤 자리는 AA·KK로 3벳한다. 오프너는 3벳에 KK면 콜, AA면 4벳
+ * 올인. 3벳한 쪽은 AA면 4벳에 콜한다. ev 배열은 hands 순서 [AA, KK, 72o].
+ */
+function threeBetData(): SeatsData {
+  const seats: SeatsData["seats"] = {};
+  for (const s of SEATS) {
+    if (s === "BB") continue;
+    const behind = SEATS.slice(SEATS.indexOf(s) + 1);
+    const per = <T,>(v: T) => Object.fromEntries(behind.map((b) => [b, v])) as Record<string, T>;
+    seats[s] = {
+      open: { AA: 1, KK: 1 },
+      openJam: {},
+      callJam: per({}),
+      vsOpenCall: per({}),
+      vsOpenJam: per({}),
+      vsJamCall: per({}),
+      vsOpenThreeBet: per({ AA: 1, KK: 1 }),
+      vsThreeBetCall: per({ KK: 1 }),
+      vsThreeBetJam: per({ AA: 1 }),
+      vsFourBetCall: per({ AA: 1 }),
+      foldEvBb: 0,
+      ev: {
+        open: [3, 2, -1],
+        openJam: [1, 1, -2],
+        vsOpenCall: per([0.5, 0.4, -3]),
+        vsOpenJam: per([2, 1, -5]),
+        callJam: per([5, 1, -9]),
+        vsJamCall: per([6, 2, -9]),
+        vsOpenThreeBet: per([4, 3, -4]),
+        vsThreeBetCall: per([1, 2, -6]),
+        vsThreeBetJam: per([8, 1, -9]),
+        vsFourBetCall: per([7, -1, -9]),
+      },
+    };
+  }
+  return {
+    tableSize: 9,
+    stackBb: 30,
+    anteBb: 1,
+    openToBb: 2.5,
+    hands: ["AA", "KK", "72o"],
+    seats,
+    threeBetToBb: { ip: 7.5, blind: 9 },
+  };
+}
+const tb = threeBetData();
+const noTb: SeatsData = { ...tb, threeBetToBb: undefined };
+const lastPut = (st: GameState, seat: string) =>
+  [...st.steps].reverse().find((x) => x.seat === seat)?.committedBb;
+
+console.log("3벳 — 선택지와 EV");
+expect(canThreeBet(tb), true, "3벳 크기가 있으면 3벳이 있다");
+expect(canThreeBet(noTb), false, "없으면 없다");
+expect(canThreeBet(data), false, "지금 20bb 데이터에는 3벳이 없다");
+expect(
+  actionsAt({ kind: "vsOpen", opener: "CO" }, true, true),
+  ["fold", "call", "threebet", "jam"],
+  "오픈 대응에 3벳",
+);
+expect(actionsAt({ kind: "vsThreeBet", threeBettor: "BTN" }), ["fold", "call", "jam"], "3벳 대응");
+expect(actionsAt({ kind: "vsFourBet", opener: "CO" }), ["fold", "call"], "4벳 대응");
+expect(labelFor(tb, "threebet", "BTN"), "3벳 7.5bb", "IP 3벳 라벨");
+expect(labelFor(tb, "threebet", "BB"), "3벳 9bb", "BB 3벳 라벨");
+expect(evAt(tb, "BTN", { kind: "vsOpen", opener: "CO" }, "KK"), [0, 0.4, 3, 1], "오픈 대응 EV 넷");
+expect(evAt(noTb, "BTN", { kind: "vsOpen", opener: "CO" }, "KK"), [0, 0.4, 1], "3벳이 없으면 셋");
+expect(
+  evAt(tb, "CO", { kind: "vsThreeBet", threeBettor: "BTN" }, "KK"),
+  [-2.5, 2, 1],
+  "오프너의 3벳 대응 EV",
+);
+expect(evAt(tb, "BTN", { kind: "vsFourBet", opener: "CO" }, "AA"), [-7.5, 7], "BTN의 4벳 대응");
+expect(evAt(tb, "BB", { kind: "vsFourBet", opener: "CO" }, "AA"), [-10, 7], "BB는 9 + 앤티를 잃는다");
+
+console.log("3벳 — 흐름과 투입액");
+{
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "AA";
+  const g = startGame(tb, SEATS, "BTN", hands, always(0.5));
+  expect(g.turn?.stage, { kind: "vsOpen", opener: "CO" }, "BTN이 CO 오픈을 마주한다");
+  expect(g.turn?.actions, ["fold", "call", "threebet", "jam"], "선택지에 3벳");
+  const after = applyHeroAction(tb, g, "threebet", always(0.5));
+  expect(after.outcome, { kind: "threebetFlop", opener: "CO", threeBettor: "BTN" }, "KK 오프너는 콜");
+  expect(lastPut(after, "BTN"), 7.5, "BTN은 7.5를 냈다");
+  expect(lastPut(after, "CO"), 7.5, "CO는 3벳액을 콜했다");
+  expect(
+    ["SB", "BB"].map((s) => after.steps.some((x) => x.seat === s && x.kind === "fold")),
+    [true, true],
+    "3벳 뒤 블라인드는 접는다",
+  );
+}
+{
+  const hands = allHands("72o");
+  hands.CO = "AA";
+  hands.BTN = "AA";
+  const g = startGame(tb, SEATS, "BTN", hands, always(0.5));
+  const after = applyHeroAction(tb, g, "threebet", always(0.5));
+  expect(after.turn?.stage, { kind: "vsFourBet", opener: "CO" }, "4벳을 마주한다");
+  expect(after.turn?.actions, ["fold", "call"], "4벳 대응 선택지");
+  const called = applyHeroAction(tb, after, "call", always(0.5));
+  expect(called.outcome, { kind: "allin", a: "CO", b: "BTN" }, "콜하면 올인 대결");
+  expect([lastPut(called, "BTN"), lastPut(called, "CO")], [30, 30], "둘 다 스택 전부");
+  const folded = applyHeroAction(tb, after, "fold", always(0.5));
+  expect(folded.outcome, { kind: "folded", winner: "CO" }, "접으면 오프너가 가져간다");
+  expect(lastPut(folded, "BTN"), 7.5, "접어도 3벳액은 남는다");
+}
+{
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "AA";
+  const g = startGame(tb, SEATS, "CO", hands, always(0.5));
+  const opened = applyHeroAction(tb, g, "open", always(0.5));
+  expect(opened.turn?.stage, { kind: "vsThreeBet", threeBettor: "BTN" }, "오프너가 3벳을 마주한다");
+  const f = applyHeroAction(tb, opened, "fold", always(0.5));
+  expect([f.outcome, lastPut(f, "CO")], [{ kind: "folded", winner: "BTN" }, 2.5], "접으면 2.5를 잃는다");
+  const c = applyHeroAction(tb, opened, "call", always(0.5));
+  expect(c.outcome, { kind: "threebetFlop", opener: "CO", threeBettor: "BTN" }, "콜하면 3벳 팟");
+  expect(lastPut(c, "CO"), 7.5, "3벳 콜은 7.5");
+  const j = applyHeroAction(tb, opened, "jam", always(0.5));
+  expect(j.outcome, { kind: "allin", a: "CO", b: "BTN" }, "4벳에 AA가 콜");
+}
+{
+  const hands = allHands("72o");
+  hands.BTN = "KK";
+  hands.BB = "AA";
+  const g = startGame(tb, SEATS, "BB", hands, always(0.5));
+  expect(g.turn?.stage, { kind: "vsOpen", opener: "BTN" }, "BB가 BTN 오픈을 마주한다");
+  const after = applyHeroAction(tb, g, "threebet", always(0.5));
+  expect(lastPut(after, "BB"), 10, "BB 3벳은 9 + 앤티");
+  expect(after.outcome, { kind: "threebetFlop", opener: "BTN", threeBettor: "BB" }, "BTN KK는 콜");
+}
+{
+  const r = lcg(3);
+  let found = 0;
+  for (let n = 0; n < 5000; n++) {
+    const hands = Object.fromEntries(SEATS.map((s) => [s, data.hands[Math.floor(r() * 169)]]));
+    const g = startGame(data, SEATS, "__nobody__", hands, r);
+    if (g.outcome?.kind === "threebetFlop") found++;
+  }
+  expect(found, 0, "3벳 필드가 없으면 3벳 팟이 없다");
 }
 
 console.log(`
