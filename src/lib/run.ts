@@ -12,6 +12,8 @@ export const HANDS_PER_LEVEL = 8;
 /** 1레벨 대비 빅블라인드 배수. 마지막 레벨을 다 버티면 완주다. */
 export const LEVEL_MULT = [1, 1.25, 1.5, 2, 2.5, 3];
 export const RUN_HANDS = HANDS_PER_LEVEL * LEVEL_MULT.length;
+/** 이보다 적은 스택(bb)은 없는 것으로 친다. 정산의 반올림 부스러기다. */
+const BUST_BELOW_BB = 0.05;
 
 export type RunState = {
   /** 끝낸 판 수. */
@@ -52,7 +54,10 @@ export function applyHand(
 ): RunState {
   if (state.over) return state;
   const mult = LEVEL_MULT[levelOf(state)];
-  const chips = Math.max(0, Math.round((state.chips + result.netBb * mult) * 100) / 100);
+  let chips = Math.max(0, Math.round((state.chips + result.netBb * mult) * 100) / 100);
+  // 손익은 0.01bb로 반올림되어 온다. 스택을 다 잃어도 그 부스러기가 남으면 0bb로
+  // 다음 판을 치게 된다. 0.05bb 아래는 없는 것으로 친다.
+  if (chips < BUST_BELOW_BB * mult) chips = 0;
   const hands = state.hands + 1;
   return {
     hands,
@@ -65,9 +70,35 @@ export function applyHand(
 }
 
 /**
- * 이 스택으로 칠 판을 어느 깊이의 풀이로 칠지. 풀린 깊이 중 가장 가까운 것이다.
- * 깊이 데이터가 늘수록 런의 판이 실제 스택에 가까워진다.
+ * 런이 칠 수 있는 깊이. 20은 한 판 전체 풀이, 나머지는 푸시/폴드 풀이를 같은
+ * 엔진으로 옮긴 것이다(depthData.ts). 30bb 풀이도 있지만 그 깊이의 보드를 앱이
+ * 아직 골라 읽지 못해 넣지 않는다.
+ */
+export const RUN_DEPTHS = [20, 15, 12, 10, 8];
+
+/**
+ * 이 스택으로 칠 판을 어느 깊이의 풀이로 칠지. 스택 이하의 가장 깊은 것이다.
+ *
+ * 가장 가까운 것을 고르면 안 된다. 26bb로 30bb 판을 치면 30bb를 걸 수 없는데
+ * 이긴 쪽은 30bb를 받아 가, 칩 계산이 스택 위로 비틀린다. 스택 이하를 고르면
+ * 상대가 그 깊이의 스택을 가진 것으로 볼 수 있어 유효 스택이 곧 깊이다.
+ * 가장 얕은 깊이보다 적으면 그 깊이를 쓰고, 거는 금액은 stakeCap으로 자른다.
  */
 export function playDepth(stack: number, solved: number[]): number {
-  return solved.reduce((best, d) => (Math.abs(d - stack) < Math.abs(best - stack) ? d : best));
+  const sorted = [...solved].sort((a, b) => b - a);
+  return sorted.find((d) => d <= stack + 1e-9) ?? sorted[sorted.length - 1];
+}
+
+/** 지금 레벨 bb로 본 스택. stackBb와 달리 반올림하지 않는다 — 계산에 쓴다. */
+export function exactStackBb(state: RunState): number {
+  return state.chips / LEVEL_MULT[levelOf(state)];
+}
+
+/**
+ * 스택이 칠 깊이보다 적으면 그 스택. 이긴 쪽도 진 쪽도 이만큼까지만 오간다.
+ * 스택이 충분하면 undefined.
+ */
+export function stakeCap(state: RunState, depth: number): number | undefined {
+  const stack = exactStackBb(state);
+  return stack < depth - 1e-9 ? stack : undefined;
 }

@@ -1,15 +1,17 @@
 // 토너먼트 런과 판 손익 검증.
 // 실행: node --experimental-strip-types scripts/run.test.ts
 
-import { postflopNet, preflopNet } from "../src/lib/handNet.ts";
+import { capCommitted, postflopNet, preflopNet } from "../src/lib/handNet.ts";
 import {
   applyHand,
   HANDS_PER_LEVEL,
   levelOf,
   playDepth,
+  RUN_DEPTHS,
   RUN_HANDS,
   RUN_START_BB,
   stackBb,
+  stakeCap,
   startRun,
 } from "../src/lib/run.ts";
 
@@ -67,6 +69,31 @@ console.log("칠 깊이");
 expect(playDepth(34, [20]), 20, "풀린 깊이가 하나면 그것");
 expect(playDepth(34, [20, 30]), 30, "가까운 쪽");
 expect(playDepth(22, [20, 30]), 20, "가까운 쪽 2");
+expect(playDepth(26, [20, 30]), 20, "가깝더라도 스택보다 깊은 쪽은 고르지 않는다");
+expect(playDepth(13.3, RUN_DEPTHS), 12, "13.3bb는 12bb");
+expect(playDepth(40, RUN_DEPTHS), 20, "20bb를 넘으면 20bb");
+expect(playDepth(5, RUN_DEPTHS), 8, "가장 얕은 깊이보다 적으면 그 깊이");
+
+console.log("부스러기 없는 버스트");
+{
+  // 레벨 3(×1.5)에서 1.25칩 = 0.833bb. 다 잃은 손익은 반올림되어 -0.83으로 온다.
+  // 남는 0.005칩으로 0bb 판을 치게 하면 안 된다.
+  const s = { ...startRun(), hands: HANDS_PER_LEVEL * 2, chips: 1.25 };
+  const after = applyHand(s, { netBb: -0.83, lossBb: 0, graded: 1 });
+  expect([after.chips, after.over], [0, "bust"], "반올림 부스러기는 버스트다");
+}
+
+console.log("거는 금액의 상한");
+{
+  const full = startRun();
+  expect(stakeCap(full, 20), undefined, "스택이 충분하면 상한 없음");
+  const short = { ...startRun(), chips: 5 };
+  expect(stakeCap(short, 8), 5, "5bb로 8bb 판을 치면 5에서 자른다");
+  // 5bb만 걸고 8bb 올인 대결을 이기면 +5.5(상대 5 + SB 0.5). 자르지 않으면 +8.5.
+  const committed = capCommitted({ UTG: 0, SB: 0.5, BB: 8, BTN: 8 }, 5);
+  expect(preflopNet(committed, "BTN", "hero"), 5.5, "자른 금액만큼만 이긴다");
+  expect(preflopNet(committed, "BTN", "villain"), -5, "자른 금액만큼만 잃는다");
+}
 
 console.log(`\n통과 ${passed}, 실패 ${failed}`);
 if (failed > 0) process.exit(1);
