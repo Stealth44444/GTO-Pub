@@ -23,6 +23,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { flopChips, withDepth } from "./game.ts";
+import { sampleFlops } from "./flop-sample.ts";
 
 const EXPORTER = process.env.EXPORTER ?? "tools/spot-exporter/target/release/spot-exporter.exe";
 // 이 깊이의 프리플랍 풀이가 아직 없으면 20bb 풀이의 레인지에서 출발한다. 파이프라인이
@@ -47,58 +48,6 @@ const BUCKETS: { name: string; opener: string; caller: string }[] = [
   { name: "late", opener: "BTN", caller: "BB" },
   { name: "sb", opener: "SB", caller: "BB" },
 ];
-
-const RANKS = "23456789TJQKA";
-const SUITS = "cdhs";
-
-function lcg(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-/** 질감으로 층을 나눈다. 플랍 EV의 분산은 대부분 여기서 온다. */
-function stratumOf(cards: string[]): string {
-  const idx = cards.map((c) => RANKS.indexOf(c[0])).sort((a, b) => b - a);
-  const suits = new Set(cards.map((c) => c[1])).size;
-  const paired = idx[0] === idx[1] || idx[1] === idx[2];
-  const high =
-    idx[0] >= 12 ? "A" : idx[0] >= 10 ? "KQ" : idx[0] >= 7 ? "JT9" : idx[0] >= 4 ? "864" : "low";
-  const gap = idx[0] - idx[2] <= 4 ? "connected" : "spread";
-  return `${high}|${paired ? "paired" : "unpaired"}|${suits}|${gap}`;
-}
-
-function sampleFlops(count: number, seed = 20260925): { flop: string; weight: number }[] {
-  const deck: string[] = [];
-  for (const r of RANKS) for (const s of SUITS) deck.push(`${r}${s}`);
-  const strata = new Map<string, string[]>();
-  for (let a = 0; a < deck.length; a++) {
-    for (let b = a + 1; b < deck.length; b++) {
-      for (let c = b + 1; c < deck.length; c++) {
-        const cards = [deck[a], deck[b], deck[c]];
-        const key = stratumOf(cards);
-        const list = strata.get(key);
-        if (list) list.push(cards.join(""));
-        else strata.set(key, [cards.join("")]);
-      }
-    }
-  }
-  const rnd = lcg(seed);
-  const out: { flop: string; weight: number }[] = [];
-  for (const key of [...strata.keys()].sort()) {
-    const pool = strata.get(key)!;
-    const share = pool.length / 22100;
-    const take = Math.max(1, Math.round(share * count));
-    const picked = new Set<string>();
-    while (picked.size < Math.min(take, pool.length)) {
-      picked.add(pool[Math.floor(rnd() * pool.length)]);
-    }
-    for (const flop of picked) out.push({ flop, weight: share / picked.size });
-  }
-  return out;
-}
 
 type Seats = {
   hands: string[];
