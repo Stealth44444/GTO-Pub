@@ -54,9 +54,20 @@ const DEPTHS = [
 ];
 
 /** 자리를 고르지 않았을 때는 한 판 전체와 같은 적응형 딜로, 자주 잃는 곳을 더 자주 낸다. */
-const draw = (data: SeatsData, kind: DrillKind, seat: string | null) =>
-  nextDrill(data, kind, seat, Math.random, (s, stage) =>
-    acceptSituation(currentSkills(), situationKey(s, stage), Math.random),
+const draw = (
+  data: SeatsData,
+  kind: DrillKind,
+  seat: string | null,
+  hard: boolean,
+) =>
+  nextDrill(
+    data,
+    kind,
+    seat,
+    Math.random,
+    (s, stage) =>
+      acceptSituation(currentSkills(), situationKey(s, stage), Math.random),
+    hard,
   );
 
 type Suit = "s" | "h" | "d" | "c";
@@ -74,8 +85,9 @@ export default function PreflopDrill() {
   const kinds = drillKinds(DATA);
   const [kind, setKind] = useState<DrillKind>("vsOpen");
   const [seat, setSeat] = useState<string | null>(null);
+  const [hard, setHard] = useState(false);
   const [drill, setDrill] = useState<Drill | null>(() =>
-    draw(FULL_DATA, "vsOpen", null),
+    draw(FULL_DATA, "vsOpen", null, false),
   );
   const [decision, setDecision] = useState<Decision | null>(null);
   const [stats, setStats] = useState({ n: 0, clean: 0, streak: 0, best: 0 });
@@ -85,11 +97,12 @@ export default function PreflopDrill() {
     return dealCombo(drill.hand, new Set(), Math.random);
   }, [drill]);
 
-  const restart = (k: DrillKind, s: string | null, data = DATA) => {
+  const restart = (k: DrillKind, s: string | null, data = DATA, h = hard) => {
     setKind(k);
     setSeat(s);
+    setHard(h);
     setDecision(null);
-    setDrill(draw(data, k, s));
+    setDrill(draw(data, k, s, h));
   };
 
   const changeDepth = (depth: number) => {
@@ -170,7 +183,7 @@ export default function PreflopDrill() {
 
   const next = () => {
     setDecision(null);
-    setDrill(draw(DATA, kind, seat));
+    setDrill(draw(DATA, kind, seat, hard));
   };
 
   const accuracy =
@@ -232,6 +245,18 @@ export default function PreflopDrill() {
             {s ?? "랜덤"}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => restart(kind, seat, DATA, !hard)}
+          aria-pressed={hard}
+          className={`ml-auto rounded-[var(--gw-radius-control)] border px-2.5 py-1 text-[12px] font-semibold transition active:scale-95 ${
+            hard
+              ? "border-[var(--gw-accent)] bg-[var(--gw-accent)]/12 text-[var(--gw-accent)]"
+              : "border-[var(--gw-border)] text-[var(--gw-text-muted)]"
+          }`}
+        >
+          어려운 것만
+        </button>
       </div>
 
       {/* 점수 */}

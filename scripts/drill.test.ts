@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { drillKinds, drillSeats, nextDrill, type DrillKind } from "../src/lib/drill.ts";
 import { evAt, type SeatsData } from "../src/lib/seatGame.ts";
-import { isStudyWorthy } from "../src/lib/spotValue.ts";
+import { isStudyWorthy, spotGap } from "../src/lib/spotValue.ts";
 import { buildDepthData, type CallsJson, type PushfoldJson } from "../src/lib/depthData.ts";
 import { seatNames } from "../src/lib/poker.ts";
 
@@ -86,6 +86,18 @@ for (const kind of drillKinds(data)) {
   check("받아들임 함수가 자리를 가른다", bb > 190);
   // 아무것도 안 받아도 스팟은 나온다.
   check("다 거절해도 스팟은 낸다", nextDrill(data, "vsOpen", null, lcg(5), () => false) !== null);
+}
+
+{
+  // 어려운 것만: 차이가 0.25bb 이하.
+  const rnd = lcg(13);
+  let close = 0;
+  for (let i = 0; i < 200; i++) {
+    const d = nextDrill(data, "vsOpen", null, rnd, undefined, true);
+    const gap = d ? spotGap(evAt(data, d.seat, d.stage, d.hand)) : null;
+    if (gap !== null && gap >= 0.05 && gap <= 0.25) close += 1;
+  }
+  check("어려운 것만 고르면 근소한 스팟만", close === 200);
 }
 
 // ── 30bb: 크기 있는 3벳·4벳·스퀴즈 ──────────────────────────────────────

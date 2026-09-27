@@ -12,7 +12,7 @@
 // import에 .ts를 붙이는 이유는 hand.ts와 같다(node 테스트와 Next 양쪽에서 로드).
 
 import { evAt, type SeatsData, type Stage } from "./seatGame.ts";
-import { isStudyWorthy } from "./spotValue.ts";
+import { isStudyWorthy, spotBand, spotGap } from "./spotValue.ts";
 
 export type DrillKind =
   | "firstIn"
@@ -141,6 +141,9 @@ const combos = (h: string) => (h.length === 2 ? 6 : h.endsWith("s") ? 4 : 12);
  * accept를 주면 상황을 그 확률로 받아들인다(적응형 딜, adaptive.ts). 자주 잃는
  * 자리·상황이 더 자주 나온다. 스무 번 거절되면 더는 묻지 않는다 — 가려내다
  * 스팟을 못 내는 일은 없어야 한다.
+ *
+ * hard면 최선과 차선의 차이가 0.25bb 이하인 근소한 스팟만 낸다. 어느 쪽인지
+ * 감으로는 안 갈리고 레인지를 정확히 알아야 맞히는 곳이다.
  */
 export function nextDrill(
   data: SeatsData,
@@ -148,6 +151,7 @@ export function nextDrill(
   seat: string | null,
   rnd: () => number,
   accept?: (seat: string, stage: Stage) => boolean,
+  hard = false,
 ): Drill | null {
   const seats = seat ? [seat] : drillSeats(data, kind);
   if (seats.length === 0) return null;
@@ -157,9 +161,12 @@ export function nextDrill(
     if (stages.length === 0) continue;
     const stage = stages[Math.floor(rnd() * stages.length)];
     if (accept && tries < 20 && !accept(s, stage)) continue;
-    const pool = data.hands.filter(
-      (h) => reachable(data, s, stage, h) && isStudyWorthy(evAt(data, s, stage, h)),
-    );
+    const pool = data.hands.filter((h) => {
+      if (!reachable(data, s, stage, h)) return false;
+      const ev = evAt(data, s, stage, h);
+      if (!isStudyWorthy(ev)) return false;
+      return !hard || spotBand(spotGap(ev) ?? 0) === "close";
+    });
     if (pool.length === 0) continue;
     const total = pool.reduce((a, h) => a + combos(h), 0);
     let r = rnd() * total;
