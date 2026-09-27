@@ -24,6 +24,8 @@ export function situationKey(seat: string, stage: Stage): string {
   if (stage.kind === "vsOpen") return `${seat}:vsOpen`;
   if (stage.kind === "vsThreeBet") return `${seat}:vs3bet`;
   if (stage.kind === "vsFourBet") return `${seat}:vs4bet`;
+  if (stage.kind === "vsFlat") return `${seat}:vsFlat`;
+  if (stage.kind === "vsSqueeze") return `${seat}:vsSqueeze`;
   return `${seat}:${stage.iOpened ? "vsJamOpened" : stage.opener ? "vsSqueeze" : "vsJam"}`;
 }
 

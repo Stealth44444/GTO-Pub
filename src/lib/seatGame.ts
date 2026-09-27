@@ -47,6 +47,15 @@ export type SeatsData = {
       vsThreeBetJam?: Record<string, Record<string, number>>;
       /** 3벳한 자리(키)가 오프너의 4벳 올인에 콜하는 빈도. */
       vsFourBetCall?: Record<string, Record<string, number>>;
+      /**
+       * 오프너의 스팟 안, [플랫한 자리][그 뒤의 자리]: 플랫 뒤 스퀴즈 올인 빈도.
+       * 없으면 첫 콜러가 나오는 순간 뒤 자리는 접는다(지금 20bb 데이터).
+       */
+      vsFlatJam?: Record<string, Record<string, Record<string, number>>>;
+      /** 스퀴즈에 오프너가 콜하는 빈도. [플랫한 자리][스퀴즈한 자리]. */
+      vsSqueezeOpenerCall?: Record<string, Record<string, Record<string, number>>>;
+      /** 오프너가 접은 뒤 플랫한 자리가 스퀴즈에 콜하는 빈도. */
+      vsSqueezeCallerCall?: Record<string, Record<string, Record<string, number>>>;
       foldEvBb: number;
       ev: {
         open: number[];
@@ -59,6 +68,9 @@ export type SeatsData = {
         vsThreeBetCall?: Record<string, number[]>;
         vsThreeBetJam?: Record<string, number[]>;
         vsFourBetCall?: Record<string, number[]>;
+        vsFlatJam?: Record<string, Record<string, number[]>>;
+        vsSqueezeOpenerCall?: Record<string, Record<string, number[]>>;
+        vsSqueezeCallerCall?: Record<string, Record<string, number[]>>;
       };
     }
   >;
@@ -80,7 +92,14 @@ export type Stage =
   /** 내가 열었고 뒤에서 크기 있는 3벳이 왔다 → 폴드 | 콜 | 4벳 올인. */
   | { kind: "vsThreeBet"; threeBettor: string }
   /** 내가 3벳했고 오프너가 4벳 올인했다 → 폴드 | 콜. */
-  | { kind: "vsFourBet"; opener: string };
+  | { kind: "vsFourBet"; opener: string }
+  /** 앞에서 오픈과 플랫이 나왔다 → 폴드 | 스퀴즈 올인. */
+  | { kind: "vsFlat"; opener: string; caller: string }
+  /**
+   * 플랫 뒤에 스퀴즈 올인이 나왔다 → 폴드 | 콜. 오프너(iOpened)가 먼저 답하고,
+   * 오프너가 접었을 때만 플랫한 자리가 답한다.
+   */
+  | { kind: "vsSqueeze"; opener: string; caller: string; squeezer: string; iOpened: boolean };
 
 /**
  * 3벳 올인 뒤에 앉은 자리의 콜 EV를 낼 승률표. 앱이 받아서 넣어 준다.
@@ -150,7 +169,18 @@ export function actionsAt(stage: Stage, open = true, threeBet = false): SeatActi
     return threeBet ? ["fold", "call", "threebet", "jam"] : ["fold", "call", "jam"];
   }
   if (stage.kind === "vsThreeBet") return ["fold", "call", "jam"];
+  if (stage.kind === "vsFlat") return ["fold", "jam"];
   return ["fold", "call"];
+}
+
+/** 플랫 뒤에 스퀴즈가 있는가. 없으면 첫 콜러가 나오는 순간 뒤 자리는 접는다. */
+export function canSqueeze(data: SeatsData): boolean {
+  return Object.values(data.seats).some((s) => s.vsFlatJam);
+}
+
+/** 플랫한 자리가 낸 금액. BB는 앤티까지 냈다. */
+function flatPut(data: SeatsData, seat: string): number {
+  return data.openToBb + (seat === "BB" ? data.anteBb : 0);
 }
 
 /** 이 데이터로 이 상황에서 고를 수 있는 액션. 엔진 안에서는 늘 이걸 쓴다. */
@@ -229,6 +259,19 @@ export function evAt(
       data.seats[stage.opener]?.ev?.vsFourBetCall?.[seat]?.[i] ?? null,
     ];
   }
+  if (stage.kind === "vsFlat") {
+    const ev = data.seats[stage.opener]?.ev?.vsFlatJam?.[stage.caller]?.[seat];
+    return [foldEv, ev?.[i] ?? null];
+  }
+  if (stage.kind === "vsSqueeze") {
+    const opener = data.seats[stage.opener]?.ev;
+    if (stage.iOpened) {
+      const ev = opener?.vsSqueezeOpenerCall?.[stage.caller]?.[stage.squeezer];
+      return [-data.openToBb, ev?.[i] ?? null];
+    }
+    const ev = opener?.vsSqueezeCallerCall?.[stage.caller]?.[stage.squeezer];
+    return [-flatPut(data, seat), ev?.[i] ?? null];
+  }
   // 올인에 대응. 내가 열었다가 3벳을 맞은 경우와, 앞의 오픈 올인을 맞은 경우.
   if (stage.iOpened) {
     // 이미 오픈액을 냈다. 접으면 그만큼만 잃는다.
@@ -278,6 +321,16 @@ function freqAt(
   }
   if (stage.kind === "vsFourBet") {
     const call = get(data.seats[stage.opener]?.vsFourBetCall?.[seat]);
+    return [Math.max(0, 1 - call), call];
+  }
+  if (stage.kind === "vsFlat") {
+    const jam = get(data.seats[stage.opener]?.vsFlatJam?.[stage.caller]?.[seat]);
+    return [Math.max(0, 1 - jam), jam];
+  }
+  if (stage.kind === "vsSqueeze") {
+    const o = data.seats[stage.opener];
+    const table = stage.iOpened ? o?.vsSqueezeOpenerCall : o?.vsSqueezeCallerCall;
+    const call = get(table?.[stage.caller]?.[stage.squeezer]);
     return [Math.max(0, 1 - call), call];
   }
   if (stage.iOpened) {
@@ -344,6 +397,10 @@ export type GameState = {
   jammer: string | null;
   /** 크기 있는 3벳을 한 자리. 3벳이 없으면 null. */
   threeBettor?: string | null;
+  /** 오픈에 플랫한 자리. 스퀴즈가 있는 데이터에서만 뒤 자리가 이어서 답한다. */
+  caller?: string | null;
+  /** 플랫 뒤에 스퀴즈 올인한 자리. */
+  squeezer?: string | null;
 };
 
 const posted = (data: SeatsData, seats: string[], seat: string) =>
@@ -483,7 +540,53 @@ function settleFourBetReply(data: SeatsData, s: GameState, reply: SeatAction): G
   return s;
 }
 
+/**
+ * 플랫 뒤에 스퀴즈 올인이 나왔다. 오프너가 먼저 답하고, 오프너가 접으면 플랫한
+ * 자리가 답한다. 콜은 한 명까지다(오프너가 콜하면 플랫한 자리는 접는다).
+ */
+function askSqueeze(data: SeatsData, s: GameState, iOpened: boolean, rnd: () => number): GameState {
+  const who = iOpened ? s.opener! : s.caller!;
+  const stage: Stage = {
+    kind: "vsSqueeze",
+    opener: s.opener!,
+    caller: s.caller!,
+    squeezer: s.squeezer!,
+    iOpened,
+  };
+  if (who === s.heroSeat) {
+    s.turn = turnWith(data, s, who, stage);
+    return s;
+  }
+  const reply = sampleAction(data, who, stage, s.hands[who], rnd);
+  return settleSqueeze(data, s, iOpened, reply, rnd);
+}
+
+function settleSqueeze(
+  data: SeatsData,
+  s: GameState,
+  iOpened: boolean,
+  reply: SeatAction,
+  rnd: () => number,
+): GameState {
+  const who = iOpened ? s.opener! : s.caller!;
+  // 폴드는 이미 낸 것(오픈액 / 플랫액)을 남기고, 콜은 스택 전부다.
+  const kept = iOpened ? data.openToBb : flatPut(data, who);
+  s.steps.push(stepFor(data, s.seats, who, reply, kept, true));
+  s.turn = null;
+  if (reply === "call") {
+    if (iOpened) s.steps.push(stepFor(data, s.seats, s.caller!, "fold", flatPut(data, s.caller!)));
+    s.outcome = { kind: "allin", a: who, b: s.squeezer! };
+    return s;
+  }
+  if (iOpened) return askSqueeze(data, s, false, rnd);
+  s.outcome = { kind: "folded", winner: s.squeezer! };
+  return s;
+}
+
 function stageFor(state: GameState, seat: string): Stage {
+  if (state.caller && state.opener && !state.jammer) {
+    return { kind: "vsFlat", opener: state.opener, caller: state.caller };
+  }
   if (state.jammer) {
     const iOpened = state.opener === seat;
     return {
@@ -533,6 +636,14 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     s.steps.push(stepFor(data, s.seats, seat, action, undefined, Boolean(s.jammer)));
     s.cursor += 1;
 
+    if (stage.kind === "vsFlat") {
+      if (action !== "jam") continue;
+      // 플랫 뒤 스퀴즈 올인. 뒤에 남은 자리는 접고 오프너부터 답한다.
+      s.squeezer = seat;
+      foldRest(data, s);
+      return askSqueeze(data, s, true, rnd);
+    }
+
     if (action === "jam") {
       // 3벳 올인. 오프너가 있으면 그쪽 응답을 받아야 한다.
       if (s.opener) {
@@ -564,6 +675,11 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     }
 
     if (action === "call") {
+      if (!s.jammer && canSqueeze(data)) {
+        // 플랫. 액션이 닫히지 않는다 — 뒤 자리가 스퀴즈로 답할 수 있다.
+        s.caller = seat;
+        continue;
+      }
       foldRest(data, s);
       foldOpenerAfterSqueeze(data, s);
       s.turn = null;
@@ -572,6 +688,13 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
         : { kind: "flop", opener: s.opener!, caller: seat };
       return s;
     }
+  }
+
+  // 플랫 뒤 자리들이 모두 접었다. 오프너와 플랫한 자리가 플랍으로 간다.
+  if (s.caller && s.opener) {
+    s.turn = null;
+    s.outcome = { kind: "flop", opener: s.opener, caller: s.caller };
+    return s;
   }
 
   // 한 바퀴가 다 돌았다. 오픈 위에 3벳 올인이 나왔고 다들 접었으면 이제 오프너가
@@ -645,6 +768,20 @@ export function applyHeroAction(
   if (stage.kind === "vsFourBet") {
     return settleFourBetReply(data, { ...state, steps: [...state.steps] }, action);
   }
+  if (stage.kind === "vsFlat" && action === "jam") {
+    const s: GameState = {
+      ...state,
+      steps: [...state.steps, stepFor(data, state.seats, state.heroSeat, "jam")],
+      turn: null,
+      cursor: state.cursor + 1,
+      squeezer: state.heroSeat,
+    };
+    foldRest(data, s);
+    return askSqueeze(data, s, true, rnd);
+  }
+  if (stage.kind === "vsSqueeze") {
+    return settleSqueeze(data, { ...state, steps: [...state.steps] }, stage.iOpened, action, rnd);
+  }
 
   const facingJam = stage.kind === "vsJam";
   // 내가 열었다가 올인에 접으면 오픈액은 팟에 남는다. 다른 자리는 advance가
@@ -683,9 +820,14 @@ export function applyHeroAction(
     return after;
   }
   if (action === "call") {
+    s.cursor += 1;
+    if (!s.jammer && canSqueeze(data)) {
+      // 내 플랫. 뒤 자리가 스퀴즈로 답할 수 있어 액션이 닫히지 않는다.
+      s.caller = state.heroSeat;
+      return advance(data, s, rnd);
+    }
     // 내 콜로 액션이 닫힌다. 뒤에 남은 자리도 접는 것으로 적어야, 화면에서
     // 하나씩 접히고 플랍 직전에 한꺼번에 사라지지 않는다.
-    s.cursor += 1;
     foldRest(data, s);
     foldOpenerAfterSqueeze(data, s);
     s.outcome = s.jammer
@@ -710,6 +852,11 @@ export function stageLine(stage: Stage): string {
   if (stage.kind === "vsOpen") return `vsOpen:${stage.opener}`;
   if (stage.kind === "vsThreeBet") return `vsThreeBet:${stage.threeBettor}`;
   if (stage.kind === "vsFourBet") return `vsFourBet:${stage.opener}`;
+  if (stage.kind === "vsFlat") return `vsFlat:${stage.opener}:${stage.caller}`;
+  if (stage.kind === "vsSqueeze") {
+    const who = stage.iOpened ? "o" : "c";
+    return `vsSqueeze:${stage.opener}:${stage.caller}:${stage.squeezer}:${who}`;
+  }
   return `vsJam:${stage.jammer}${stage.opener ? `:${stage.opener}` : ""}`;
 }
 
@@ -744,6 +891,15 @@ export function rangesAt(
     }
     if (stage.kind === "vsFourBet") {
       return a === "call" ? (data.seats[stage.opener]?.vsFourBetCall?.[seat] ?? null) : null;
+    }
+    if (stage.kind === "vsFlat") {
+      const r = data.seats[stage.opener]?.vsFlatJam?.[stage.caller]?.[seat];
+      return a === "jam" ? (r ?? null) : null;
+    }
+    if (stage.kind === "vsSqueeze") {
+      const o = data.seats[stage.opener];
+      const table = stage.iOpened ? o?.vsSqueezeOpenerCall : o?.vsSqueezeCallerCall;
+      return a === "call" ? (table?.[stage.caller]?.[stage.squeezer] ?? null) : null;
     }
     if (a !== "call") return null;
     // 3벳 올인 뒷자리는 솔버가 푼 레인지가 없다. 격자 없이 EV만 보여준다.

@@ -6,6 +6,7 @@ import {
   actionsAt,
   applyHeroAction,
   canOpen,
+  canSqueeze,
   canThreeBet,
   evAt,
   labelFor,
@@ -522,6 +523,168 @@ console.log("3벳 — 흐름과 투입액");
     if (g.outcome?.kind === "threebetFlop") found++;
   }
   expect(found, 0, "3벳 필드가 없으면 3벳 팟이 없다");
+}
+
+// ── 플랫 뒤 스퀴즈 올인 ─────────────────────────────────────────────────
+
+/**
+ * 핸드 넷짜리 가짜 30bb 데이터. KK·QQ로 열고 QQ로 플랫한다. 플랫 뒤에서는 AA가
+ * 스퀴즈 올인한다. 스퀴즈에 오프너는 KK로만 콜하고, 플랫한 쪽은 QQ로 콜한다.
+ * ev 배열은 hands 순서 [AA, KK, QQ, 72o].
+ */
+function squeezeData(): SeatsData {
+  const seats: SeatsData["seats"] = {};
+  for (const s of SEATS) {
+    if (s === "BB") continue;
+    const behind = SEATS.slice(SEATS.indexOf(s) + 1);
+    const per = <T,>(v: T) => Object.fromEntries(behind.map((b) => [b, v])) as Record<string, T>;
+    // [플랫한 자리][그 뒤의 자리]
+    const perFlat = <T,>(v: T) =>
+      Object.fromEntries(
+        behind.map((c) => [
+          c,
+          Object.fromEntries(SEATS.slice(SEATS.indexOf(c) + 1).map((m) => [m, v])),
+        ]),
+      ) as Record<string, Record<string, T>>;
+    seats[s] = {
+      open: { KK: 1, QQ: 1 },
+      openJam: {},
+      callJam: per({}),
+      vsOpenCall: per({ QQ: 1 }),
+      vsOpenJam: per({}),
+      vsJamCall: per({}),
+      vsFlatJam: perFlat({ AA: 1 }),
+      vsSqueezeOpenerCall: perFlat({ KK: 1 }),
+      vsSqueezeCallerCall: perFlat({ QQ: 1 }),
+      foldEvBb: 0,
+      ev: {
+        open: [3, 2, 1, -1],
+        openJam: [1, 1, 0, -2],
+        vsOpenCall: per([1, 0.8, 0.6, -3]),
+        vsOpenJam: per([2, 1, 0, -5]),
+        callJam: per([5, 1, 0, -9]),
+        vsJamCall: per([6, 2, 0, -9]),
+        vsFlatJam: perFlat([9, 1, 0.5, -3]),
+        vsSqueezeOpenerCall: perFlat([8, 2, -1, -9]),
+        vsSqueezeCallerCall: perFlat([7, 1, 0.3, -9]),
+      },
+    };
+  }
+  return {
+    tableSize: 9,
+    stackBb: 30,
+    anteBb: 1,
+    openToBb: 2.5,
+    hands: ["AA", "KK", "QQ", "72o"],
+    seats,
+  };
+}
+const sq = squeezeData();
+
+console.log("스퀴즈 — 선택지와 EV");
+expect(canSqueeze(sq), true, "스퀴즈 데이터가 있으면 스퀴즈가 있다");
+expect(canSqueeze(data), false, "지금 20bb 데이터에는 없다");
+expect(actionsAt({ kind: "vsFlat", opener: "CO", caller: "BTN" }), ["fold", "jam"], "플랫을 마주하면 폴드/올인");
+expect(
+  actionsAt({ kind: "vsSqueeze", opener: "CO", caller: "BTN", squeezer: "BB", iOpened: true }),
+  ["fold", "call"],
+  "스퀴즈를 맞으면 폴드/콜",
+);
+expect(evAt(sq, "BB", { kind: "vsFlat", opener: "CO", caller: "BTN" }, "QQ"), [-2, 0.5], "BB의 스퀴즈 EV");
+expect(
+  evAt(sq, "CO", { kind: "vsSqueeze", opener: "CO", caller: "BTN", squeezer: "BB", iOpened: true }, "KK"),
+  [-2.5, 2],
+  "오프너의 스퀴즈 대응 EV",
+);
+expect(
+  evAt(sq, "BTN", { kind: "vsSqueeze", opener: "CO", caller: "BTN", squeezer: "BB", iOpened: false }, "QQ"),
+  [-2.5, 0.3],
+  "플랫한 쪽의 스퀴즈 대응 EV",
+);
+
+console.log("스퀴즈 — 흐름과 투입액");
+{
+  // CO KK 오픈, BTN QQ 플랫, BB AA 스퀴즈, CO KK 콜 → BTN은 접는다.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.BB = "AA";
+  const g = startGame(sq, SEATS, "__nobody__", hands, always(0.5));
+  expect(g.outcome, { kind: "allin", a: "CO", b: "BB" }, "오프너가 콜하면 오프너와 스퀴즈한 자리의 올인");
+  expect(
+    [lastPut(g, "CO"), lastPut(g, "BB"), lastPut(g, "BTN")],
+    [30, 30, 2.5],
+    "둘은 스택 전부, 플랫한 쪽은 2.5를 잃는다",
+  );
+}
+{
+  // CO QQ 오픈(스퀴즈에 접는다), BTN QQ 플랫, BB AA 스퀴즈 → CO 폴드 → BTN 콜.
+  const hands = allHands("72o");
+  hands.CO = "QQ";
+  hands.BTN = "QQ";
+  hands.BB = "AA";
+  const g = startGame(sq, SEATS, "__nobody__", hands, always(0.5));
+  expect(g.outcome, { kind: "allin", a: "BTN", b: "BB" }, "오프너가 접으면 플랫한 쪽이 받는다");
+  expect([lastPut(g, "CO"), lastPut(g, "BTN")], [2.5, 30], "오프너는 2.5를 잃고 플랫한 쪽은 스택");
+}
+{
+  // 아무도 스퀴즈하지 않으면 지금처럼 플랍.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  const g = startGame(sq, SEATS, "__nobody__", hands, always(0.5));
+  expect(g.outcome, { kind: "flop", opener: "CO", caller: "BTN" }, "스퀴즈가 없으면 플랍");
+  expect(
+    ["SB", "BB"].map((s) => g.steps.some((x) => x.seat === s && x.kind === "fold")),
+    [true, true],
+    "블라인드는 차례로 접는다",
+  );
+}
+{
+  // 히어로 BB가 플랫을 마주한다.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.BB = "AA";
+  const g = startGame(sq, SEATS, "BB", hands, always(0.5));
+  expect(g.turn?.stage, { kind: "vsFlat", opener: "CO", caller: "BTN" }, "BB가 플랫을 마주한다");
+  const j = applyHeroAction(sq, g, "jam", always(0.5));
+  expect(j.outcome, { kind: "allin", a: "CO", b: "BB" }, "스퀴즈에 KK 오프너가 콜");
+  const f = applyHeroAction(sq, g, "fold", always(0.5));
+  expect(f.outcome?.kind, "folded", "BB가 접으면 히어로의 판은 끝난다");
+}
+{
+  // 히어로 CO(오프너)가 스퀴즈를 맞는다.
+  const hands = allHands("72o");
+  hands.CO = "QQ";
+  hands.BTN = "QQ";
+  hands.BB = "AA";
+  const g = startGame(sq, SEATS, "CO", hands, always(0.5));
+  const opened = applyHeroAction(sq, g, "open", always(0.5));
+  expect(
+    opened.turn?.stage,
+    { kind: "vsSqueeze", opener: "CO", caller: "BTN", squeezer: "BB", iOpened: true },
+    "오프너가 스퀴즈를 마주한다",
+  );
+  const f = applyHeroAction(sq, opened, "fold", always(0.5));
+  expect(f.outcome, { kind: "allin", a: "BTN", b: "BB" }, "내가 접으면 플랫한 BTN(QQ)이 콜");
+  expect(lastPut(f, "CO"), 2.5, "접어도 오픈액은 남는다");
+}
+{
+  // 히어로 BTN(플랫한 자리)이 오프너가 접은 뒤 스퀴즈를 맞는다.
+  const hands = allHands("72o");
+  hands.CO = "QQ";
+  hands.BTN = "QQ";
+  hands.BB = "AA";
+  const g = startGame(sq, SEATS, "BTN", hands, always(0.5));
+  const flatted = applyHeroAction(sq, g, "call", always(0.5));
+  expect(
+    flatted.turn?.stage,
+    { kind: "vsSqueeze", opener: "CO", caller: "BTN", squeezer: "BB", iOpened: false },
+    "플랫한 쪽이 스퀴즈를 마주한다",
+  );
+  const f = applyHeroAction(sq, flatted, "fold", always(0.5));
+  expect([f.outcome, lastPut(f, "BTN")], [{ kind: "folded", winner: "BB" }, 2.5], "접으면 2.5를 잃는다");
 }
 
 console.log(`
