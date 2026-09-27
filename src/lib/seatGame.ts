@@ -56,6 +56,8 @@ export type SeatsData = {
       vsSqueezeOpenerCall?: Record<string, Record<string, Record<string, number>>>;
       /** 오프너가 접은 뒤 플랫한 자리가 스퀴즈에 콜하는 빈도. */
       vsSqueezeCallerCall?: Record<string, Record<string, Record<string, number>>>;
+      /** 플랫 뒤 오버콜(3인 팟) 빈도. [플랫한 자리][그 뒤의 자리]. 없으면 오버콜이 없다. */
+      vsFlatCall?: Record<string, Record<string, Record<string, number>>>;
       foldEvBb: number;
       ev: {
         open: number[];
@@ -71,6 +73,7 @@ export type SeatsData = {
         vsFlatJam?: Record<string, Record<string, number[]>>;
         vsSqueezeOpenerCall?: Record<string, Record<string, number[]>>;
         vsSqueezeCallerCall?: Record<string, Record<string, number[]>>;
+        vsFlatCall?: Record<string, Record<string, number[]>>;
       };
     }
   >;
@@ -163,14 +166,24 @@ export function threeBetToOf(data: SeatsData, seat: string): number {
   return seat === "SB" || seat === "BB" ? size.blind : size.ip;
 }
 
-export function actionsAt(stage: Stage, open = true, threeBet = false): SeatAction[] {
+export function actionsAt(
+  stage: Stage,
+  open = true,
+  threeBet = false,
+  overcall = false,
+): SeatAction[] {
   if (stage.kind === "firstIn") return open ? ["fold", "open", "jam"] : ["fold", "jam"];
   if (stage.kind === "vsOpen") {
     return threeBet ? ["fold", "call", "threebet", "jam"] : ["fold", "call", "jam"];
   }
   if (stage.kind === "vsThreeBet") return ["fold", "call", "jam"];
-  if (stage.kind === "vsFlat") return ["fold", "jam"];
+  if (stage.kind === "vsFlat") return overcall ? ["fold", "call", "jam"] : ["fold", "jam"];
   return ["fold", "call"];
+}
+
+/** 플랫 뒤에 오버콜(3인 팟)이 있는가. */
+export function canOvercall(data: SeatsData): boolean {
+  return Object.values(data.seats).some((s) => s.vsFlatCall);
 }
 
 /** 플랫 뒤에 스퀴즈가 있는가. 없으면 첫 콜러가 나오는 순간 뒤 자리는 접는다. */
@@ -185,7 +198,7 @@ function flatPut(data: SeatsData, seat: string): number {
 
 /** 이 데이터로 이 상황에서 고를 수 있는 액션. 엔진 안에서는 늘 이걸 쓴다. */
 function actionsFor(data: SeatsData, stage: Stage): SeatAction[] {
-  return actionsAt(stage, canOpen(data), canThreeBet(data));
+  return actionsAt(stage, canOpen(data), canThreeBet(data), canOvercall(data));
 }
 
 export function labelFor(data: SeatsData, action: SeatAction, seat?: string): string {
@@ -260,8 +273,10 @@ export function evAt(
     ];
   }
   if (stage.kind === "vsFlat") {
-    const ev = data.seats[stage.opener]?.ev?.vsFlatJam?.[stage.caller]?.[seat];
-    return [foldEv, ev?.[i] ?? null];
+    const o = data.seats[stage.opener]?.ev;
+    const jam = o?.vsFlatJam?.[stage.caller]?.[seat]?.[i] ?? null;
+    if (!canOvercall(data)) return [foldEv, jam];
+    return [foldEv, o?.vsFlatCall?.[stage.caller]?.[seat]?.[i] ?? null, jam];
   }
   if (stage.kind === "vsSqueeze") {
     const opener = data.seats[stage.opener]?.ev;
@@ -324,8 +339,11 @@ function freqAt(
     return [Math.max(0, 1 - call), call];
   }
   if (stage.kind === "vsFlat") {
-    const jam = get(data.seats[stage.opener]?.vsFlatJam?.[stage.caller]?.[seat]);
-    return [Math.max(0, 1 - jam), jam];
+    const o = data.seats[stage.opener];
+    const jam = get(o?.vsFlatJam?.[stage.caller]?.[seat]);
+    if (!canOvercall(data)) return [Math.max(0, 1 - jam), jam];
+    const call = get(o?.vsFlatCall?.[stage.caller]?.[seat]);
+    return [Math.max(0, 1 - call - jam), call, jam];
   }
   if (stage.kind === "vsSqueeze") {
     const o = data.seats[stage.opener];
@@ -378,7 +396,9 @@ export type Outcome =
   | { kind: "allin"; a: string; b: string }
   | { kind: "flop"; opener: string; caller: string }
   /** 크기 있는 3벳에 오프너가 콜했다. 3벳 팟 플랍으로 간다. */
-  | { kind: "threebetFlop"; opener: string; threeBettor: string };
+  | { kind: "threebetFlop"; opener: string; threeBettor: string }
+  /** 플랫 뒤 오버콜로 셋이 플랍에 간다. 3인 플랍 전략은 없어 플랍 전에 끝난다. */
+  | { kind: "multiwayFlop"; opener: string; caller: string; overcaller: string };
 
 export type Turn = { stage: Stage; actions: SeatAction[]; evBb: (number | null)[] };
 
@@ -401,6 +421,8 @@ export type GameState = {
   caller?: string | null;
   /** 플랫 뒤에 스퀴즈 올인한 자리. */
   squeezer?: string | null;
+  /** 플랫 뒤에 따라 들어온 자리(3인 팟). */
+  overcaller?: string | null;
 };
 
 const posted = (data: SeatsData, seats: string[], seat: string) =>
@@ -637,6 +659,14 @@ function advance(data: SeatsData, state: GameState, rnd: () => number): GameStat
     s.cursor += 1;
 
     if (stage.kind === "vsFlat") {
+      if (action === "call") {
+        // 오버콜. 셋이 플랍에 가고 뒤 자리는 접는다(4인 이상은 다루지 않는다).
+        s.overcaller = seat;
+        foldRest(data, s);
+        s.turn = null;
+        s.outcome = { kind: "multiwayFlop", opener: s.opener!, caller: s.caller!, overcaller: seat };
+        return s;
+      }
       if (action !== "jam") continue;
       // 플랫 뒤 스퀴즈 올인. 뒤에 남은 자리는 접고 오프너부터 답한다.
       s.squeezer = seat;
@@ -768,6 +798,23 @@ export function applyHeroAction(
   if (stage.kind === "vsFourBet") {
     return settleFourBetReply(data, { ...state, steps: [...state.steps] }, action);
   }
+  if (stage.kind === "vsFlat" && action === "call") {
+    const s: GameState = {
+      ...state,
+      steps: [...state.steps, stepFor(data, state.seats, state.heroSeat, "call")],
+      turn: null,
+      cursor: state.cursor + 1,
+      overcaller: state.heroSeat,
+    };
+    foldRest(data, s);
+    s.outcome = {
+      kind: "multiwayFlop",
+      opener: state.opener!,
+      caller: state.caller!,
+      overcaller: state.heroSeat,
+    };
+    return s;
+  }
   if (stage.kind === "vsFlat" && action === "jam") {
     const s: GameState = {
       ...state,
@@ -893,8 +940,10 @@ export function rangesAt(
       return a === "call" ? (data.seats[stage.opener]?.vsFourBetCall?.[seat] ?? null) : null;
     }
     if (stage.kind === "vsFlat") {
-      const r = data.seats[stage.opener]?.vsFlatJam?.[stage.caller]?.[seat];
-      return a === "jam" ? (r ?? null) : null;
+      const o = data.seats[stage.opener];
+      if (a === "jam") return o?.vsFlatJam?.[stage.caller]?.[seat] ?? null;
+      if (a === "call") return o?.vsFlatCall?.[stage.caller]?.[seat] ?? null;
+      return null;
     }
     if (stage.kind === "vsSqueeze") {
       const o = data.seats[stage.opener];

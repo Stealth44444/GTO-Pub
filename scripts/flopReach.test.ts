@@ -22,7 +22,7 @@ const r = flopReach(data, lcg(1), 20000);
 console.log(`  20bb 플랍 도달 ${(r.flop * 100).toFixed(1)}%`);
 check("20bb 플랍 도달이 35.9% 근처(33~39%)", r.flop > 0.33 && r.flop < 0.39);
 check("3벳 필드가 없으면 3벳 팟은 0", r.threebetFlop === 0);
-check("결과 비율의 합은 1", Math.abs(r.flop + r.threebetFlop + r.allin + r.folded - 1) < 1e-9);
+check("결과 비율의 합은 1", Math.abs(r.flop + r.threebetFlop + r.multiwayFlop + r.allin + r.folded - 1) < 1e-9);
 
 console.log(`통과 ${pass}, 실패 ${fail}`);
 process.exit(fail > 0 ? 1 : 0);

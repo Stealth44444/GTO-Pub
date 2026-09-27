@@ -336,7 +336,8 @@ for (let round = 1; round <= ROUNDS; round++) {
   const reach = flopReach(readSeats(), lcg(1), 20000);
   setStatus(
     `${round}바퀴 끝`,
-    `플랍 도달 ${((reach.flop + reach.threebetFlop) * 100).toFixed(1)}%` +
+    `플랍 도달 ${((reach.flop + reach.threebetFlop + reach.multiwayFlop) * 100).toFixed(1)}%` +
+      ` (3인 팟 ${(reach.multiwayFlop * 100).toFixed(1)}%)` +
       ` (3벳 팟 ${(reach.threebetFlop * 100).toFixed(1)}%)` +
       ` · BB의 BTN 3벳 ${(after["BTN>BB"] ?? 0).toFixed(1)}%` +
       ` · 3벳 빈도 최대 변화 ${change.toFixed(2)}%p` +

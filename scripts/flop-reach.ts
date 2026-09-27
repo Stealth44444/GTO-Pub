@@ -22,6 +22,8 @@ export type Reach = {
   flop: number;
   /** 크기 있는 3벳 팟으로 플랍에 간 비율. */
   threebetFlop: number;
+  /** 오버콜로 셋이 플랍에 간 비율. */
+  multiwayFlop: number;
   allin: number;
   folded: number;
 };
@@ -38,7 +40,7 @@ export function flopReach(data: SeatsData, rnd: () => number, n: number): Reach 
     }
     return data.hands[data.hands.length - 1];
   };
-  const count = { flop: 0, threebetFlop: 0, allin: 0, folded: 0 };
+  const count = { flop: 0, threebetFlop: 0, multiwayFlop: 0, allin: 0, folded: 0 };
   for (let i = 0; i < n; i++) {
     const hands = Object.fromEntries(seats.map((s) => [s, deal()]));
     const g = startGame(data, seats, "__nobody__", hands, rnd);
@@ -48,6 +50,7 @@ export function flopReach(data: SeatsData, rnd: () => number, n: number): Reach 
     hands: n,
     flop: count.flop / n,
     threebetFlop: count.threebetFlop / n,
+    multiwayFlop: count.multiwayFlop / n,
     allin: count.allin / n,
     folded: count.folded / n,
   };
@@ -70,7 +73,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
   console.log(
     `${path} · ${r.hands}판\n` +
-      `  플랍 도달 ${pct(r.flop + r.threebetFlop)} (단일 레이즈 ${pct(r.flop)} · 3벳 팟 ${pct(r.threebetFlop)})\n` +
+      `  플랍 도달 ${pct(r.flop + r.threebetFlop + r.multiwayFlop)}` +
+      ` (단일 레이즈 ${pct(r.flop)} · 3벳 팟 ${pct(r.threebetFlop)} · 3인 팟 ${pct(r.multiwayFlop)})\n` +
       `  올인 ${pct(r.allin)} · 프리플랍에서 끝 ${pct(r.folded)}`,
   );
 }

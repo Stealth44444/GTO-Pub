@@ -6,6 +6,7 @@ import {
   actionsAt,
   applyHeroAction,
   canOpen,
+  canOvercall,
   canSqueeze,
   canThreeBet,
   evAt,
@@ -685,6 +686,94 @@ console.log("스퀴즈 — 흐름과 투입액");
   );
   const f = applyHeroAction(sq, flatted, "fold", always(0.5));
   expect([f.outcome, lastPut(f, "BTN")], [{ kind: "folded", winner: "BB" }, 2.5], "접으면 2.5를 잃는다");
+}
+
+// ── 플랫 뒤 오버콜(3인 팟) ─────────────────────────────────────────────
+
+/** 스퀴즈 데이터에 오버콜을 더한다: 플랫 뒤에서 KK는 따라 들어간다(AA는 여전히 스퀴즈). */
+function overcallData(): SeatsData {
+  const d = squeezeData();
+  for (const [s, e] of Object.entries(d.seats)) {
+    const behind = SEATS.slice(SEATS.indexOf(s) + 1);
+    const perFlat = <T,>(v: T) =>
+      Object.fromEntries(
+        behind.map((c) => [
+          c,
+          Object.fromEntries(SEATS.slice(SEATS.indexOf(c) + 1).map((m) => [m, v])),
+        ]),
+      ) as Record<string, Record<string, T>>;
+    e.vsFlatCall = perFlat({ KK: 1 });
+    e.ev.vsFlatCall = perFlat([4, 1.5, 0.2, -3]);
+  }
+  return d;
+}
+const oc = overcallData();
+
+console.log("오버콜 — 선택지와 EV");
+expect(canOvercall(oc), true, "오버콜 데이터가 있으면 오버콜이 있다");
+expect(canOvercall(sq), false, "스퀴즈만 있는 데이터에는 없다");
+expect(
+  actionsAt({ kind: "vsFlat", opener: "CO", caller: "BTN" }, true, false, true),
+  ["fold", "call", "jam"],
+  "오버콜이 있으면 폴드/콜/올인",
+);
+expect(
+  evAt(oc, "BB", { kind: "vsFlat", opener: "CO", caller: "BTN" }, "KK"),
+  [-2, 1.5, 1],
+  "BB의 폴드/오버콜/스퀴즈 EV",
+);
+expect(
+  evAt(sq, "BB", { kind: "vsFlat", opener: "CO", caller: "BTN" }, "KK"),
+  [-2, 1],
+  "오버콜이 없으면 둘",
+);
+
+console.log("오버콜 — 흐름과 투입액");
+{
+  // CO KK 오픈, BTN QQ 플랫, SB 72o 폴드, BB KK 오버콜 → 3인 팟.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.BB = "KK";
+  const g = startGame(oc, SEATS, "__nobody__", hands, always(0.5));
+  expect(g.outcome, { kind: "multiwayFlop", opener: "CO", caller: "BTN", overcaller: "BB" }, "3인 팟");
+  expect(
+    [lastPut(g, "CO"), lastPut(g, "BTN"), lastPut(g, "BB")],
+    [2.5, 2.5, 3.5],
+    "셋 다 오픈액, BB는 앤티까지",
+  );
+}
+{
+  // SB가 오버콜하면 뒤의 BB는 접는다(4인 이상은 없다).
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.SB = "KK";
+  hands.BB = "KK";
+  const g = startGame(oc, SEATS, "__nobody__", hands, always(0.5));
+  expect(g.outcome, { kind: "multiwayFlop", opener: "CO", caller: "BTN", overcaller: "SB" }, "SB 오버콜");
+  expect(g.steps.at(-1), { seat: "BB", kind: "fold", committedBb: 2 }, "뒤의 BB는 접는다");
+}
+{
+  // 히어로 BB가 오버콜한다.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.BB = "QQ";
+  const g = startGame(oc, SEATS, "BB", hands, always(0.5));
+  expect(g.turn?.actions, ["fold", "call", "jam"], "BB의 선택지");
+  const c = applyHeroAction(oc, g, "call", always(0.5));
+  expect(c.outcome, { kind: "multiwayFlop", opener: "CO", caller: "BTN", overcaller: "BB" }, "히어로 오버콜");
+  expect(lastPut(c, "BB"), 3.5, "오버콜은 2.5 + 앤티");
+}
+{
+  // 스퀴즈 데이터(오버콜 없음)에서는 BB가 콜을 고를 수 없다 — 지금과 같다.
+  const hands = allHands("72o");
+  hands.CO = "KK";
+  hands.BTN = "QQ";
+  hands.BB = "QQ";
+  const g = startGame(sq, SEATS, "BB", hands, always(0.5));
+  expect(g.turn?.actions, ["fold", "jam"], "오버콜이 없으면 폴드/올인");
 }
 
 console.log(`

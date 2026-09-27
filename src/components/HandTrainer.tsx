@@ -6,7 +6,7 @@ import { actionEvFor, actionLabel, boardAt, type SolvedSpot } from "@/lib/tree";
 import { committedBySeat } from "@/lib/preflop";
 import { judge } from "@/lib/showdown";
 import { capCommitted, postflopNet, preflopNet, type Winner } from "@/lib/handNet";
-import { allinEquity, seeded } from "@/lib/allinEquity";
+import { allinEquity, multiwayEquity, seeded } from "@/lib/allinEquity";
 import { makeDecision, scoreHand, type Decision } from "@/lib/decisions";
 import { fromNode, fromRanges } from "@/lib/rangeGrid";
 import { RECAP_EVERY, summarizeRun, toRunDecisions, type RunDecision } from "@/lib/session-run";
@@ -154,6 +154,8 @@ type Round = {
   /** 프리플랍 올인이 콜됐을 때 깔아 준 보드. */
   allinBoard: string[] | null;
   allinCards: { hero: [string, string]; villain: [string, string] } | null;
+  /** 3인 팟에서 두 상대가 쥔 카드. 자리 → 두 장. */
+  multiCards: Record<string, [string, string]> | null;
   entry: SpotEntry | null;
   /**
    * 이 보드가 실제 상황과 얼마나 맞는가.
@@ -255,6 +257,7 @@ function freshRound(
     game,
     allinBoard: null,
     allinCards: null,
+    multiCards: null,
     entry: null,
     boardFit: "none",
     spot: null,
@@ -318,6 +321,20 @@ function handOutcome(
       // 정산한다 — 카드를 깔지 않았으니 운이 끼어들 자리가 없다.
       const eq = allinEquity(round.allinCards.hero, round.allinCards.villain, [], seeded(round.id));
       netBb = blend(eq, preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
+      evNetBb = netBb;
+    }
+  } else if (o?.kind === "multiwayFlop") {
+    const others = [o.opener, o.caller, o.overcaller].filter((s) => s !== hero);
+    if (others.length === 3) netBb = preflopNet(committed, hero, "villain");
+    else if (round.multiCards && others.every((s) => round.multiCards?.[s])) {
+      // 3인 플랍은 솔버가 풀 수 없어 치지 않는다. 세 핸드의 승률로 팟을 나눈다 —
+      // 카드를 깔지 않았으니 운이 끼어들 자리가 없다.
+      const eq = multiwayEquity(
+        [round.heroCombo, ...others.map((s) => round.multiCards![s])],
+        [],
+        seeded(round.id),
+      );
+      netBb = blend(eq[0], preflopNet(committed, hero, "hero"), preflopNet(committed, hero, "villain"));
       evNetBb = netBb;
     }
   } else if (o?.kind === "flop") {
@@ -623,6 +640,26 @@ export default function HandTrainer({
           if (outcome.kind === "allin") board = dealRunout([...round.heroCombo, ...villain], Math.random);
         }
       }
+      // 3인 팟: 두 상대의 카드를 서로 겹치지 않게 뽑는다.
+      let multi: Record<string, [string, string]> | null = null;
+      if (outcome.kind === "multiwayFlop") {
+        const others = [outcome.opener, outcome.caller, outcome.overcaller].filter(
+          (x) => x !== round.heroSeat,
+        );
+        if (others.length === 2) {
+          const used = new Set<string>(round.heroCombo);
+          multi = {};
+          for (const seat of others) {
+            const combo = dealCombo(round.hands[seat], used, Math.random);
+            if (!combo) {
+              multi = null;
+              break;
+            }
+            combo.forEach((c) => used.add(c));
+            multi[seat] = combo;
+          }
+        }
+      }
 
       const note =
         outcome.kind === "allin"
@@ -633,7 +670,10 @@ export default function HandTrainer({
             : outcome.kind === "threebetFlop"
               ? // 3벳 팟 보드는 아직 없다(2단계). 프리플랍 판단까지만 채점한다.
                 "3벳 팟 — 플랍은 다음 단계에서 칩니다"
-              : outcome.winner === round.heroSeat
+              : outcome.kind === "multiwayFlop"
+                ? // 3인 플랍은 솔버가 풀 수 없다. 세 핸드의 승률로 나눈다.
+                  "3인 팟 — 세 핸드의 승률로 나눕니다"
+                : outcome.winner === round.heroSeat
               ? "모두 폴드, 팟 획득"
               : `${outcome.winner} 팟 획득`;
       const t = window.setTimeout(() => {
@@ -642,6 +682,7 @@ export default function HandTrainer({
           if (board) setShown(true);
           setRound((cur) => (cur ? { ...cur, allinBoard: board, allinCards: cards } : cur));
         }
+        if (multi) setRound((cur) => (cur ? { ...cur, multiCards: multi } : cur));
         setEnding(note);
         setPhase("over");
       }, 500);
@@ -836,7 +877,10 @@ export default function HandTrainer({
   // (프리플랍에서 다들 접은 판) 기다릴 이유가 없다.
   const allinBoardLength = round?.allinBoard?.length ?? 0;
   // 올인 런아웃은 다섯 장을 차례로 깐다. 다 깔린 뒤부터 읽을 시간을 센다.
-  const revealMs = !villainReveal
+  // 3인 팟은 두 상대의 카드를 함께 읽어야 하므로 쇼다운만큼 기다린다.
+  const revealMs = round?.multiCards
+    ? REVEAL_SHOWDOWN_MS
+    : !villainReveal
     ? 0
     : shown
       ? (allinBoardLength ? dealDurationMs(0, allinBoardLength) : 0) + REVEAL_SHOWDOWN_MS
@@ -1066,7 +1110,11 @@ export default function HandTrainer({
                 : undefined
             }
             revealedCards={
-              villainReveal && villainSeat ? { [villainSeat]: villainReveal } : undefined
+              ending && round.multiCards
+                ? round.multiCards
+                : villainReveal && villainSeat
+                  ? { [villainSeat]: villainReveal }
+                  : undefined
             }
             dealKey={String(round.id)}
             // 보드가 다 깔리기 전에는 아무 자리도 차례가 아니다.

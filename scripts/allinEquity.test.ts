@@ -1,5 +1,5 @@
 // 실행: node --experimental-strip-types scripts/allinEquity.test.ts
-import { allinEquity, seeded } from "../src/lib/allinEquity.ts";
+import { allinEquity, multiwayEquity, seeded } from "../src/lib/allinEquity.ts";
 
 let pass = 0;
 let fail = 0;
@@ -49,6 +49,23 @@ check(
   allinEquity(["Ah", "Ad"], ["Ks", "Kc"], [], seeded(9)) ===
     allinEquity(["Ah", "Ad"], ["Ks", "Kc"], [], seeded(9)),
 );
+
+// 3인 승률. 무승부는 나눠 갖는다 — 셋의 합은 1이다.
+{
+  const eq = multiwayEquity([["Ah", "Ad"], ["Ks", "Kc"], ["Qh", "Qd"]], [], seeded(11));
+  console.log(`  AA/KK/QQ ${eq.map((x) => (x * 100).toFixed(1)).join(" / ")}%`);
+  check("3인 승률의 합은 1", Math.abs(eq[0] + eq[1] + eq[2] - 1) < 1e-9);
+  check("AA가 약 65%", eq[0] > 0.6 && eq[0] < 0.7);
+  check("KK가 QQ보다 높다", eq[1] > eq[2]);
+}
+{
+  // 리버까지 깔려 있으면 결과 그대로. 셋이 같은 스트레이트면 삼등분.
+  const board = ["Ts", "Js", "Qd", "Kc", "Ah"];
+  const eq = multiwayEquity([["2c", "3c"], ["4d", "5d"], ["6h", "7h"]], board, seeded(12));
+  check("보드가 이기면 삼등분", eq.every((x) => Math.abs(x - 1 / 3) < 1e-9));
+  const eq2 = multiwayEquity([["Ac", "Ad"], ["2c", "3d"], ["2h", "3h"]], ["As", "Kd", "7c", "4s", "9h"], seeded(12));
+  check("트립스가 다 가져간다", eq2[0] === 1 && eq2[1] === 0);
+}
 
 console.log(`통과 ${pass}, 실패 ${fail}`);
 process.exit(fail > 0 ? 1 : 0);

@@ -62,3 +62,51 @@ export function allinEquity(
   }
   return won / count;
 }
+
+/**
+ * 여러 핸드의 쇼다운 승률. 무승부는 이긴 사람 수로 나눠 갖는다 — 합은 1이다.
+ *
+ * 3인 팟 정산에 쓴다. 3인 플랍은 솔버가 풀 수 없어 판을 플랍 전에 끝내고, 세
+ * 핸드의 실제 승률로 팟을 나눈다. 보드가 두 장 이하로 남으면 전수, 그보다 많으면
+ * 샘플링한다(3인은 전수가 두 배 이상 비싸다).
+ */
+export function multiwayEquity(
+  hands: string[][],
+  board: string[],
+  rnd: () => number,
+  samples = 20000,
+): number[] {
+  const hs = hands.map((h) => h.map(parseCard));
+  const b = board.map(parseCard);
+  const used = new Set([...hs.flat(), ...b]);
+  const deck = DECK.filter((c) => !used.has(c));
+  const need = 5 - b.length;
+  const won = hands.map(() => 0);
+  let count = 0;
+  const tally = (full: number[]) => {
+    const scores = hs.map((h) => evaluate7([...full, ...h]));
+    const best = Math.max(...scores);
+    const winners = scores.filter((x) => x === best).length;
+    scores.forEach((x, i) => {
+      if (x === best) won[i] += 1 / winners;
+    });
+    count += 1;
+  };
+  if (need <= 0) tally(b);
+  else if (need === 1) for (const a of deck) tally([...b, a]);
+  else if (need === 2) {
+    for (let i = 0; i < deck.length; i++) {
+      for (let j = i + 1; j < deck.length; j++) tally([...b, deck[i], deck[j]]);
+    }
+  } else {
+    const d = [...deck];
+    for (let k = 0; k < samples; k++) {
+      for (let i = 0; i < need; i++) {
+        const j = i + Math.floor(rnd() * (d.length - i));
+        [d[i], d[j]] = [d[j], d[i]];
+      }
+      tally([...b, ...d.slice(0, need)]);
+    }
+  }
+  return won.map((w) => w / count);
+}
