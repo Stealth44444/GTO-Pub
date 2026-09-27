@@ -123,7 +123,7 @@ export default function PreflopDrill() {
   const accuracy = stats.n === 0 ? null : Math.round((stats.clean / stats.n) * 100);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-y-auto px-4 pb-6">
+    <div className="mx-auto h-full w-full max-w-md overflow-y-auto px-4 pb-6">
       <div style={{ paddingTop: "env(safe-area-inset-top)" }} />
 
       {/* 상황 고르기 */}
@@ -221,18 +221,19 @@ export default function PreflopDrill() {
             </div>
           )}
           <DecisionRows rows={decision.rows} chosen={decision.chosen} />
-          {decision.range && (
-            <div className="mt-4">
-              <RangeGrid view={decision.range} />
-            </div>
-          )}
           <button
             type="button"
             onClick={next}
-            className="mt-5 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-4 text-[16px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
+            className="mt-4 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-4 text-[16px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
           >
             다음 스팟
           </button>
+          {/* 격자는 버튼 아래에 둔다. 다음 스팟으로 가는 데 스크롤이 필요 없어야 한다. */}
+          {decision.range && (
+            <div className="mt-5">
+              <RangeGrid view={decision.range} />
+            </div>
+          )}
         </section>
       )}
     </div>
