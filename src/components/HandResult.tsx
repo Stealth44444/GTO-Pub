@@ -258,6 +258,7 @@ function DecisionDetail({
             iOpened={d.jam.iOpened}
             opener={d.jam.opener}
             handCode={handCode}
+            data={d.jam.data}
           />
         )}
         {d.mix && <RangeMixBar rows={d.mix} />}

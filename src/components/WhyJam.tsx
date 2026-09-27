@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { SEATS_DATA } from "@/lib/seatsData";
 import { equityVsRange, loadEquity } from "@/lib/equity";
 import { jamPotOdds, jamRangeOf } from "@/lib/why";
-
-const DATA = SEATS_DATA;
+import type { SeatsData } from "@/lib/seatGame";
 
 /**
  * 올인에 대한 콜의 근거 숫자.
@@ -24,6 +23,7 @@ export default function WhyJam({
   iOpened,
   opener,
   handCode,
+  data = SEATS_DATA,
 }: {
   heroSeat: string;
   jammer: string;
@@ -31,13 +31,18 @@ export default function WhyJam({
   /** 3벳 올인 뒤에 앉아 있었다면 그 오픈을 연 자리. */
   opener?: string;
   handCode: string;
+  /**
+   * 그 판을 친 깊이의 데이터. 빠지면 20bb로 계산한다 — 런에서 15bb로 친 판을
+   * 20bb 팟 오즈로 설명하면 숫자가 틀린다.
+   */
+  data?: SeatsData;
 }) {
   const stage = { kind: "vsJam" as const, jammer, iOpened, ...(opener ? { opener } : {}) };
   const [equityPct, setEquityPct] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
-    const range = jamRangeOf(DATA, heroSeat, stage);
+    const range = jamRangeOf(data, heroSeat, stage);
     if (!range) return;
     void loadEquity().then((table) => {
       if (!alive || !table) return;
@@ -48,9 +53,9 @@ export default function WhyJam({
     };
     // stage는 아래 세 값에서만 나온다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroSeat, jammer, iOpened, opener, handCode]);
+  }, [heroSeat, jammer, iOpened, opener, handCode, data]);
 
-  const odds = jamPotOdds(DATA, heroSeat, stage);
+  const odds = jamPotOdds(data, heroSeat, stage);
   // 승률이 아직 안 왔으면 팟 오즈만 보여준다. 그것만으로도 반은 설명된다.
   const enough = equityPct === null ? null : equityPct >= odds.needPct;
 

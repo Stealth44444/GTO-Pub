@@ -931,6 +931,7 @@ export default function HandTrainer({
               jammer: stage.jammer,
               iOpened: stage.iOpened,
               ...(stage.opener ? { opener: stage.opener } : {}),
+              data,
             },
           }
         : decision,
