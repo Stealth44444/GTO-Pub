@@ -208,7 +208,11 @@ export function describeStage(stage: Stage): string {
   if (stage.kind === "vsThreeBet") return `내 오픈에 ${stage.threeBettor}가 3벳했습니다`;
   if (stage.kind === "vsFourBet") return `내 3벳에 ${stage.opener}가 4벳 올인했습니다`;
   if (stage.kind === "vsFlat") return `${stage.opener}가 열고 ${stage.caller}가 콜했습니다`;
-  if (stage.kind === "vsSqueeze") return `${stage.squeezer}가 스퀴즈 올인했습니다`;
+  if (stage.kind === "vsSqueeze") {
+    return stage.iOpened
+      ? `내 오픈에 ${stage.caller}가 콜하고 ${stage.squeezer}가 스퀴즈 올인했습니다`
+      : `${stage.opener}의 오픈에 콜했더니 ${stage.squeezer}가 스퀴즈 올인했습니다`;
+  }
   return `${stage.jammer}가 올인했습니다`;
 }
 
