@@ -4,10 +4,22 @@
 //   SAMPLES(핸드당 표본, 기본 600), OUT(출력 경로, 기본 src/data/multiway-<깊이>bb.json)
 //
 // 포스트플랍 솔버는 2인 전용이라 3인 플랍 전략은 풀 수 없다. 대신 가치는 이렇게 잰다.
-//   몫 = 팟 × 승률^(1/실현 비율)   (실현 비율은 포지션으로 정한다)
+//   몫 = 팟 × 포지션 비율 × 승률^ALPHA, 그리고 세 사람 몫의 레인지 평균 합 = 팟
 // 승률은 두 상대의 조합을 레인지에서(카드 겹침 없이) 뽑고 보드 다섯 장을 뽑아 센다.
-// 실현 비율은 이미 푼 2인 표(BTN 오픈-BB 콜)에서 잰다: 플랍 몫 ÷ (승률 × 팟), 조합 가중.
+// 포지션 비율은 이미 푼 2인 표(BTN 오픈-BB 콜)에서 잰다: 플랍 몫 ÷ (승률 × 팟), 조합 가중.
 // 플랍에서 마지막에 치는 자리는 IP 비율, 처음 치는 자리는 OOP 비율, 가운데는 평균.
+//
+// ALPHA(기본 2)는 3인 팟의 가정이다. 약한 핸드는 두 사람에게 지배당하고, 블러프가
+// 통하려면 둘 다 접어야 해서 승률만큼 못 가져간다. 강한 핸드는 두 사람에게서 가치를
+// 받는다. 승률을 볼록하게 펴는 것이 그 모양이다. 첫 시도는 승률^(1/비율)이라 IP(1.14)
+// 에서 지수가 1보다 작아졌고, 약한 핸드일수록 몫이 부풀었다 — UTG 오픈 · CO 플랫 뒤
+// BTN이 핸드의 66%로 오버콜했다. 2인 표로는 이 기울기를 잴 수 없다(2인 레인지에는
+// 약한 핸드가 거의 없고, 2인에서 IP의 약한 핸드는 폴드 에퀴티로 승률 이상을 가져간다).
+// 2는 맞춘 값이다. 합을 팟에 맞춘 뒤 "이익인 오버콜"(스퀴즈를 빼고 본 상한)이
+// UTG 오픈 · CO 플랫 뒤 BTN 26%, BTN 오픈 · SB 플랫 뒤 BB 39%가 된다. 1.25면 49%·76%,
+// 1.5면 38%·66%로, 앤티 게임의 알려진 풀이(BTN 오버콜 10% 안팎, 액션을 닫는 BB 절반
+// 안팎)보다 한참 넓다. 스퀴즈가 BTN의 몫을 더 깎는다.
+// 마지막에 합을 팟에 맞춘다. 돈은 새로 생기지도 사라지지도 않는다.
 //
 // 근사다. 3인 팟에서 포지션과 레인지가 몫을 어떻게 바꾸는지는 2인에서 잰 비율로 대신한다.
 // 무엇을 썼는지 출력 파일의 note와 realization에 남긴다.
@@ -24,6 +36,7 @@ const SEATS = ["UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN", "SB", "BB"];
 /** 플랍에서 치는 순서. 앞일수록 먼저 친다(OOP). */
 const POSTFLOP = ["SB", "BB", "UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN"];
 const SAMPLES = Number(process.env.SAMPLES ?? 600);
+const ALPHA = Number(process.env.ALPHA ?? 2);
 const OUT = process.env.OUT ?? withDepth("src/data/multiway.json");
 
 const posted = (seat: string) => (seat === "BB" ? 1 + ANTE_BB : seat === "SB" ? 0.5 : 0);
@@ -219,7 +232,7 @@ function realization(): { oop: number; ip: number } {
 // ── 계산 ────────────────────────────────────────────────────────────────
 
 const R = realization();
-console.log(`실현 비율: OOP ${R.oop.toFixed(3)} · IP ${R.ip.toFixed(3)} · 표본 ${SAMPLES}`);
+console.log(`실현 비율: OOP ${R.oop.toFixed(3)} · IP ${R.ip.toFixed(3)} · ALPHA ${ALPHA} · 표본 ${SAMPLES}`);
 const rnd = lcg(20260928);
 const started = Date.now();
 
@@ -253,16 +266,31 @@ for (let a = 0; a < SEATS.length - 2; a++) {
         const f = factor(seat);
         return HANDS.map((_, h) => {
           const e = equity3(h, S[x], S[y], rnd);
-          // 승률에 비율을 곱하면 강한 핸드가 팟보다 많이 가져간다(90% × 1.14).
-          // e^(1/f)는 0~1을 지키면서 가운데 핸드를 대략 f배 바꾼다.
-          return Number.isNaN(e) ? null : Math.round(Math.pow(e, 1 / f) * pot * 1000) / 1000;
+          return Number.isNaN(e) ? null : pot * f * Math.pow(e, ALPHA);
         });
       };
+      const raw = { opener: shares("opener"), caller: shares("caller"), over: shares("over") };
+      // 세 사람 몫의 레인지 평균 합을 팟에 맞춘다.
+      const mean = (v: (number | null)[], r: Float64Array) => {
+        let w = 0;
+        let t = 0;
+        v.forEach((x, i) => {
+          if (x === null || r[i] <= 0) return;
+          w += x * r[i] * COMBOS[i];
+          t += r[i] * COMBOS[i];
+        });
+        return t > 0 ? w / t : 0;
+      };
+      const sum = mean(raw.opener, openR) + mean(raw.caller, flatR) + mean(raw.over, ocR);
+      const k = sum > 0 ? pot / sum : 1;
+      // 한 사람이 팟보다 많이 가져갈 수는 없다.
+      const fix = (v: (number | null)[]) =>
+        v.map((x) => (x === null ? null : Math.round(Math.min(pot, x * k) * 1000) / 1000));
       (out[opener] ??= {})[caller] ??= {};
       out[opener][caller][over] = {
-        opener: shares("opener") as number[],
-        caller: shares("caller") as number[],
-        overcaller: shares("over") as number[],
+        opener: fix(raw.opener) as number[],
+        caller: fix(raw.caller) as number[],
+        overcaller: fix(raw.over) as number[],
         pot,
       };
       trios += 1;
@@ -275,10 +303,12 @@ writeFileSync(
   OUT,
   JSON.stringify({
     note:
-      "3인 팟 몫(bb) = 팟 × 3인 쇼다운 승률^(1/실현 비율). 실현 비율은 2인 표(BTN-BB)에서 잰 값." +
+      "3인 팟 몫(bb) = 팟 × 포지션 비율 × 3인 쇼다운 승률^ALPHA, 세 사람 합 = 팟으로 맞춤." +
+      " 포지션 비율은 2인 표(BTN-BB)에서 잰 값." +
       " 포스트플랍 솔버가 2인 전용이라 3인 플랍 전략은 풀지 않았다.",
     stackBb: data.stackBb,
     samples: SAMPLES,
+    alpha: ALPHA,
     realization: R,
     hands: HANDS,
     trios: out,
