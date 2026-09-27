@@ -58,15 +58,22 @@ const BUCKETS = [
  * 매긴다 — 뒷자리 플랫이 포지션을 잃은 값으로 매겨져, CO 오픈에 BTN이 1.2%만
  * 콜하고 3벳 올인을 13.4% 하는 답이 나왔다(2026-09-27). 이름은 보드 파이프라인의
  * 구간(pipeline-boards.ts)과 같다.
+ *
+ * **기본으로 끈다(CALLERS=1일 때만 푼다).** 이 표를 넣으면 반대쪽으로 무너진다:
+ * 엔진은 첫 콜러가 나오면 뒤 자리가 접는다고 보므로, 뒷자리 플랫이 블라인드와
+ * 앤티(2.5bb)를 공짜로 가져간다. 포지션까지 제값을 받으면 CO가 UTG 오픈에
+ * 42.5%, BTN이 CO 오픈에 49%를 플랫하고 플랍 도달률이 78%가 됐다(2026-09-27).
+ * BB 표로 매기는 원래 방식은 포지션을 빼서 그 공짜 돈을 우연히 상쇄하고 있었다.
+ * 제대로 고치려면 플랫 뒤에 블라인드가 스퀴즈·콜로 답하는 것을 모델에 넣어야 한다.
  */
-const CALL_BUCKETS = [
+const CALL_BUCKETS = (process.env.CALLERS === "1" ? [
   { name: "early-ip", opener: "UTG1", caller: "CO" },
   { name: "middle-ip", opener: "HJ", caller: "BTN" },
   { name: "late-ip", opener: "CO", caller: "BTN" },
   { name: "early-sb", opener: "UTG1", caller: "SB" },
   { name: "middle-sb", opener: "HJ", caller: "SB" },
   { name: "late-sb", opener: "BTN", caller: "SB" },
-].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
+] : []).filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
 
 type EquityTable = { hands: string[]; equity: number[] };
 const EQUITY = JSON.parse(readFileSync("scripts/data/equity.json", "utf8")) as EquityTable;
