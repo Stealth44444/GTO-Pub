@@ -21,12 +21,19 @@ import { DRILL_LABEL, drillKinds, drillSeats, nextDrill, type Drill, type DrillK
 import { isCleanChoice } from "@/lib/grading";
 import { ensureGuestUser, logReview } from "@/lib/attempts";
 import { currentUserId } from "@/lib/session";
+import { acceptSituation, currentSkills, noteLoss, situationKey } from "@/lib/adaptive";
 import Card from "./Card";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
 
 const DATA = SEATS_DATA;
+
+/** 자리를 고르지 않았을 때는 한 판 전체와 같은 적응형 딜로, 자주 잃는 곳을 더 자주 낸다. */
+const draw = (kind: DrillKind, seat: string | null) =>
+  nextDrill(DATA, kind, seat, Math.random, (s, stage) =>
+    acceptSituation(currentSkills(), situationKey(s, stage), Math.random),
+  );
 
 type Suit = "s" | "h" | "d" | "c";
 
@@ -41,7 +48,7 @@ export default function PreflopDrill() {
   const kinds = drillKinds(DATA);
   const [kind, setKind] = useState<DrillKind>("vsOpen");
   const [seat, setSeat] = useState<string | null>(null);
-  const [drill, setDrill] = useState<Drill | null>(() => nextDrill(DATA, "vsOpen", null, Math.random));
+  const [drill, setDrill] = useState<Drill | null>(() => draw("vsOpen", null));
   const [decision, setDecision] = useState<Decision | null>(null);
   const [stats, setStats] = useState({ n: 0, clean: 0, streak: 0, best: 0 });
 
@@ -54,7 +61,7 @@ export default function PreflopDrill() {
     setKind(k);
     setSeat(s);
     setDecision(null);
-    setDrill(nextDrill(DATA, k, s, Math.random));
+    setDrill(draw(k, s));
   };
 
   if (!drill) {
@@ -80,6 +87,7 @@ export default function PreflopDrill() {
     );
     const d = makeDecision("PREFLOP", labels, ev, actions.indexOf(a), actions.map(recordKind), [], view);
     setDecision(d);
+    if (d.lossBb !== null) noteLoss(situationKey(drill.seat, drill.stage), d.lossBb);
     const clean = d.grade ? isCleanChoice(d.grade) : true;
     setStats((s) => {
       const streak = clean ? s.streak + 1 : 0;
@@ -109,7 +117,7 @@ export default function PreflopDrill() {
 
   const next = () => {
     setDecision(null);
-    setDrill(nextDrill(DATA, kind, seat, Math.random));
+    setDrill(draw(kind, seat));
   };
 
   const accuracy = stats.n === 0 ? null : Math.round((stats.clean / stats.n) * 100);

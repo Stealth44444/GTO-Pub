@@ -62,12 +62,17 @@ const combos = (h: string) => (h.length === 2 ? 6 : h.endsWith("s") ? 4 : 12);
  * 하나도 없는 상황은 건너뛴다. 끝내 못 찾으면 null.
  *
  * 3벳 대응은 히어로가 열었다는 상황이라, 오픈 레인지에 드는 핸드만 준다.
+ *
+ * accept를 주면 상황을 그 확률로 받아들인다(적응형 딜, adaptive.ts). 자주 잃는
+ * 자리·상황이 더 자주 나온다. 스무 번 거절되면 더는 묻지 않는다 — 가려내다
+ * 스팟을 못 내는 일은 없어야 한다.
  */
 export function nextDrill(
   data: SeatsData,
   kind: DrillKind,
   seat: string | null,
   rnd: () => number,
+  accept?: (seat: string, stage: Stage) => boolean,
 ): Drill | null {
   const seats = seat ? [seat] : drillSeats(data, kind);
   for (let tries = 0; tries < 40; tries++) {
@@ -75,6 +80,7 @@ export function nextDrill(
     const stages = situations(data, kind, s);
     if (stages.length === 0) continue;
     const stage = stages[Math.floor(rnd() * stages.length)];
+    if (accept && tries < 20 && !accept(s, stage)) continue;
     const open = data.seats[s]?.open;
     const pool = data.hands.filter(
       (h) =>

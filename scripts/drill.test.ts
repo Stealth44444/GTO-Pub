@@ -73,5 +73,18 @@ for (const kind of drillKinds(data)) {
   check("올인한 자리는 올인 레인지가 있다", ok);
 }
 
+{
+  // 받아들임 함수가 BB만 받으면 (거절 한도 안에서는) BB만 나온다.
+  const rnd = lcg(11);
+  let bb = 0;
+  for (let i = 0; i < 200; i++) {
+    const d = nextDrill(data, "vsOpen", null, rnd, (s) => s === "BB");
+    if (d?.seat === "BB") bb += 1;
+  }
+  check("받아들임 함수가 자리를 가른다", bb > 190);
+  // 아무것도 안 받아도 스팟은 나온다.
+  check("다 거절해도 스팟은 낸다", nextDrill(data, "vsOpen", null, lcg(5), () => false) !== null);
+}
+
 console.log(`통과 ${pass}, 실패 ${fail}`);
 process.exit(fail > 0 ? 1 : 0);
