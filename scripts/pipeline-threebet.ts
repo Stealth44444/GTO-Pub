@@ -116,6 +116,53 @@ function betterThanFold(ev: number[] | undefined, fold: number, hands: string[],
 
 const rangeString = (hands: string[]) => hands.map((h) => `${h}:1`).join(",");
 
+/** 3인 팟 몫(scripts/multiway-values.ts)을 풀지. MULTIWAY=1일 때만. */
+const MULTIWAY = process.env.MULTIWAY === "1";
+
+type MultiwayTrio = {
+  opener: (number | null)[];
+  caller: (number | null)[];
+  overcaller: (number | null)[];
+  pot: number;
+};
+type MultiwayFile = {
+  hands: string[];
+  trios: Record<string, Record<string, Record<string, MultiwayTrio>>>;
+  [key: string]: unknown;
+};
+
+/** 바퀴별 3인 팟 몫의 평균. 핸드마다 값이 있는 바퀴만 평균낸다. */
+function averageMultiway(files: MultiwayFile[]): MultiwayFile {
+  const last = files[files.length - 1];
+  const avg = (pick: (f: MultiwayFile) => (number | null)[] | undefined) =>
+    last.hands.map((_, i) => {
+      let sum = 0;
+      let n = 0;
+      for (const f of files) {
+        const v = pick(f)?.[i];
+        if (v !== null && v !== undefined) {
+          sum += v;
+          n += 1;
+        }
+      }
+      return n === 0 ? null : Math.round((sum / n) * 1000) / 1000;
+    });
+  const trios: MultiwayFile["trios"] = {};
+  for (const [o, byK] of Object.entries(last.trios)) {
+    for (const [k, byM] of Object.entries(byK)) {
+      for (const [m, t] of Object.entries(byM)) {
+        ((trios[o] ??= {})[k] ??= {})[m] = {
+          opener: avg((f) => f.trios[o]?.[k]?.[m]?.opener),
+          caller: avg((f) => f.trios[o]?.[k]?.[m]?.caller),
+          overcaller: avg((f) => f.trios[o]?.[k]?.[m]?.overcaller),
+          pot: t.pot,
+        };
+      }
+    }
+  }
+  return { ...last, trios, rounds: files.length };
+}
+
 /** build-preflop-values.ts가 쓰는 표. flopEvBb[0]이 OOP, [1]이 IP. */
 type FlopTable = {
   hands: string[];
@@ -321,6 +368,24 @@ for (let round = 1; round <= ROUNDS; round++) {
       `${round}바퀴 3벳 ${b.name} 완료`,
       `3벳 ${tbHands.length} · 콜 ${callHands.length}핸드${reused ? ` · 플랍 ${reused}개 재사용` : ""}`,
     );
+  }
+
+  if (MULTIWAY) {
+    // 3인 팟 몫. 이 바퀴 레인지로 만들고, 지금까지 모든 바퀴의 평균을 풀이가 읽는다
+    // (플랍 표와 같은 이유 — 마지막 바퀴만 쓰면 레인지가 튄다).
+    const base = withDepth("scripts/data/multiway");
+    mkdirSync(base, { recursive: true });
+    execFileSync("node", ["--experimental-strip-types", "scripts/multiway-values.ts"], {
+      stdio: "ignore",
+      env: { ...process.env, OUT: `${base}/r${round}.json` },
+    });
+    const rounds: MultiwayFile[] = [];
+    for (let r = 1; r <= round; r++) {
+      const path = `${base}/r${r}.json`;
+      if (existsSync(path)) rounds.push(JSON.parse(readFileSync(path, "utf8")) as MultiwayFile);
+    }
+    writeFileSync(withDepth("src/data/multiway.json"), JSON.stringify(averageMultiway(rounds)));
+    setStatus(`${round}바퀴 3인 팟 몫 완료`, `${rounds.length}바퀴 평균`);
   }
 
   setStatus(`${round}바퀴 프리플랍 재솔브`);

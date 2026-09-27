@@ -50,6 +50,7 @@ scripts/data/flopev-*/
 scripts/data/flopev3-*/
 scripts/data/threebet-status*.json
 scripts/data/threebet-*.log
+scripts/data/multiway-*/
 scripts/data/pipeline-status.json
 
 # 파이프라인 재개용 곁기록

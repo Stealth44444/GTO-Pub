@@ -165,6 +165,30 @@ for (const o of Object.keys(BUCKET_OF)) {
 }
 const flop3Used = Object.keys(FLOP3_EV);
 
+// ── 3인 팟 몫 ────────────────────────────────────────────────────────────
+
+/**
+ * 플랫 뒤 오버콜로 셋이 플랍에 갔을 때 각자의 몫(bb). scripts/multiway-values.ts가
+ * 만든다. 없으면 오버콜을 풀지 않는다(플랫 뒤는 폴드 / 스퀴즈뿐).
+ */
+type Trio = { opener: (number | null)[]; caller: (number | null)[]; overcaller: (number | null)[] };
+const MW_PATH = withDepth("src/data/multiway.json");
+const MW: { hands: string[]; trios: Record<string, Record<string, Record<string, Trio>>> } | null =
+  existsSync(MW_PATH) ? JSON.parse(readFileSync(MW_PATH, "utf8")) : null;
+/** 3인 팟 몫을 HANDS 순서의 배열로. 값이 없는 핸드는 NaN. */
+function mwShares(o: string, k: string, m: string): { o: number[]; k: number[]; m: number[] } | null {
+  const t = MW?.trios?.[o]?.[k]?.[m];
+  if (!MW || !t) return null;
+  const idx = new Map(MW.hands.map((h, i) => [h, i]));
+  const conv = (arr: (number | null)[]) =>
+    HANDS.map((h) => {
+      const i = idx.get(h);
+      const v = i === undefined ? null : arr[i];
+      return v === null || v === undefined ? Number.NaN : v;
+    });
+  return { o: conv(t.opener), k: conv(t.caller), m: conv(t.overcaller) };
+}
+
 // ── 승률 ────────────────────────────────────────────────────────────────
 
 /** 레인지 하나에 대한 169개 핸드 각각의 승률. 조합 수로 가중한다. */
@@ -225,6 +249,8 @@ type Strategy = {
    * m의 스퀴즈 올인, 오프너의 콜, (오프너가 접은 뒤) k의 콜.
    */
   sq: Float64Array[][];
+  /** [k][m]: m의 오버콜(3인 팟). 3인 팟 몫 표가 없으면 쓰지 않는다. */
+  oc: Float64Array[][];
   oSq: Float64Array[][];
   kSq: Float64Array[][];
 };
@@ -246,6 +272,8 @@ type Values = {
   sqEv: Float64Array[][];
   oSqCall: Float64Array[][];
   kSqCall: Float64Array[][];
+  /** [k][m]: m의 오버콜 EV. 표가 없으면 -Infinity(고르지 않는다). */
+  ocEv: Float64Array[][];
 };
 
 /**
@@ -298,6 +326,7 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     sqEv: [],
     oSqCall: [],
     kSqCall: [],
+    ocEv: [],
   };
 
   for (let k = 0; k < nK; k++) {
@@ -360,6 +389,9 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     const flatFreq = freq(s.vCall[k]);
     let noSq = 1;
     const firstSq: number[] = [];
+    const firstOc: number[] = [];
+    const ocEv: Float64Array[] = [];
+    const mwAfter = after.map((m) => mwShares(hero, seat, m));
     const pO: number[] = [];
     const sqEv: Float64Array[] = [];
     const oSqCall: Float64Array[] = [];
@@ -367,8 +399,18 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     for (let mi = 0; mi < after.length; mi++) {
       const m = after[mi];
       const f = freq(s.sq[k][mi]);
+      const g = mwAfter[mi] ? freq(s.oc[k][mi]) : 0;
       firstSq.push(noSq * f);
-      noSq *= 1 - f;
+      firstOc.push(noSq * g);
+      noSq *= Math.max(0, 1 - f - g);
+      // m의 오버콜: 3인 팟 몫 − 낸 것. 몫이 없으면 고르지 않는다.
+      const mw = mwAfter[mi];
+      const oce = new Float64Array(N).fill(Number.NEGATIVE_INFINITY);
+      if (mw) {
+        const mPut = OPEN + (m === "BB" ? ANTE : 0);
+        for (let x = 0; x < N; x++) if (!Number.isNaN(mw.m[x])) oce[x] = mw.m[x] - mPut;
+      }
+      ocEv.push(oce);
       // 셋 말고 판에 남은 죽은 돈
       const r3 = DEAD - posted(hero) - posted(seat) - posted(m);
       const potO = 2 * STACK + paid + r3; // 오프너가 콜: 플랫한 k의 돈은 죽는다
@@ -404,13 +446,19 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     v.sqEv.push(sqEv);
     v.oSqCall.push(oSqCall);
     v.kSqCall.push(kSqCall);
+    v.ocEv.push(ocEv);
 
     const ct = callTables[k];
     const flatOpener = new Float64Array(N);
     for (let h = 0; h < N; h++) {
       const fv = ct.table[ct.callerOop ? 1 : 0][h];
       let e = noSq * (Number.isNaN(fv) ? -OPEN : fv - OPEN);
-      for (let mi = 0; mi < after.length; mi++) e += firstSq[mi] * Math.max(-OPEN, oSqCall[mi][h]);
+      for (let mi = 0; mi < after.length; mi++) {
+        e += firstSq[mi] * Math.max(-OPEN, oSqCall[mi][h]);
+        // 3인 팟. 몫이 없는 핸드는 팟을 못 가져가는 것으로 본다.
+        const mw = mwAfter[mi];
+        if (firstOc[mi] > 0 && mw) e += firstOc[mi] * ((Number.isNaN(mw.o[h]) ? 0 : mw.o[h]) - OPEN);
+      }
       flatOpener[h] = e;
     }
     v.flatOpener.push(flatOpener);
@@ -421,6 +469,8 @@ function values(hero: string, behind: string[], s: Strategy): Values {
       // 오프너가 콜하면 k는 접고 낸 것을 잃는다. 오프너가 접으면 k가 고른다.
       for (let mi = 0; mi < after.length; mi++) {
         e += firstSq[mi] * (pO[mi] * -paid + (1 - pO[mi]) * Math.max(-paid, kSqCall[mi][j]));
+        const mw = mwAfter[mi];
+        if (firstOc[mi] > 0 && mw) e += firstOc[mi] * ((Number.isNaN(mw.k[j]) ? 0 : mw.k[j]) - paid);
       }
       vsCall[j] = e;
 
@@ -500,6 +550,7 @@ function solveSeat(heroIdx: number): SeatResult {
     sq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.05))),
     oSq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.3))),
     kSq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.3))),
+    oc: behind.map((_, k) => behind.slice(k + 1).map(() => flat(MW ? 0.05 : 0))),
   };
   const heroFold = -posted(hero);
 
@@ -537,7 +588,10 @@ function solveSeat(heroIdx: number): SeatResult {
       behind.slice(k + 1).forEach((m, mi) => {
         const mFold = -posted(m);
         for (let x = 0; x < N; x++) {
-          step(s.sq[k][mi], x, v.sqEv[k][mi][x] > mFold ? 1 : 0);
+          // 폴드 / 오버콜 / 스퀴즈 중 가장 나은 것.
+          const b = bestIndex([mFold, v.ocEv[k][mi][x], v.sqEv[k][mi][x]]);
+          step(s.oc[k][mi], x, b === 1 ? 1 : 0);
+          step(s.sq[k][mi], x, b === 2 ? 1 : 0);
           step(s.oSq[k][mi], x, v.oSqCall[k][mi][x] > -OPEN ? 1 : 0);
           step(s.kSq[k][mi], x, v.kSqCall[k][mi][x] > -paid ? 1 : 0);
         }
@@ -659,6 +713,8 @@ for (const [seat, r] of Object.entries(results)) {
     vsFlatJam: perFlat(s.sq, asRange),
     vsSqueezeOpenerCall: perFlat(s.oSq, asRange),
     vsSqueezeCallerCall: perFlat(s.kSq, asRange),
+    // 3인 팟 몫 표가 있을 때만 오버콜을 싣는다. 없으면 엔진이 오버콜을 열지 않는다.
+    ...(MW ? { vsFlatCall: perFlat(s.oc, asRange) } : {}),
     foldEvBb: -posted(seat),
     ev: {
       open: asEv(v.open),
@@ -674,6 +730,7 @@ for (const [seat, r] of Object.entries(results)) {
       vsFlatJam: perFlat(v.sqEv, asEv),
       vsSqueezeOpenerCall: perFlat(v.oSqCall, asEv),
       vsSqueezeCallerCall: perFlat(v.kSqCall, asEv),
+      ...(MW ? { vsFlatCall: perFlat(v.ocEv, asEv) } : {}),
     },
   };
 }
@@ -739,7 +796,8 @@ for (const [opener, flatter] of [
   const bb = r.behind.slice(k + 1).indexOf("BB");
   console.log(
     `  ${opener} 오픈에 ${flatter} 플랫 ${pct(freq(r.strategy.vCall[k]))}` +
-      ` · 그 뒤 BB 스퀴즈 ${bb >= 0 ? pct(freq(r.strategy.sq[k][bb])) : "  —"}`,
+      ` · 그 뒤 BB 스퀴즈 ${bb >= 0 ? pct(freq(r.strategy.sq[k][bb])) : "  —"}` +
+      ` · 오버콜 ${bb >= 0 && MW ? pct(freq(r.strategy.oc[k][bb])) : "  —"}`,
   );
 }
 console.log(`\n평균 후회 ${(regretSum / regretN).toFixed(4)}bb · ${((Date.now() - started) / 1000).toFixed(0)}초`);
