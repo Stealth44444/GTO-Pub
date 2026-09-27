@@ -40,7 +40,9 @@ const BUCKETS = [
   { name: "early", opener: "UTG1", caller: "BB" },
   { name: "middle", opener: "HJ", caller: "BB" },
   { name: "late", opener: "BTN", caller: "BB" },
-  { name: "sb", opener: "SB", caller: "BB" },
+  // sb2: SB를 먼저 치게 다시 푼 판(2026-09-28). 보드 파일은 한 번 올리면 바뀌지
+  // 않는 것으로 보고 오래 캐시하므로, 고친 판은 이름을 바꿔 새 파일로 올린다.
+  { name: "sb", opener: "SB", caller: "BB", tag: "sb2" },
   // IP 콜러 구간이 먼저다. SB 콜러는 없어도 BB 구간으로 역할은 맞게 칠 수 있다.
   { name: "early-ip", opener: "UTG1", caller: "CO" },
   { name: "middle-ip", opener: "HJ", caller: "BTN" },
@@ -50,9 +52,17 @@ const BUCKETS = [
   { name: "late-sb", opener: "BTN", caller: "SB" },
 ].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
 
-/** 플랍에서 콜러가 먼저 치는가. 블라인드만 오프너보다 앞선다. */
-function callerIsOop(caller: string): boolean {
-  return caller === "BB" || caller === "SB";
+/** 플랍에서 치는 순서. 앞일수록 먼저 친다. */
+const POSTFLOP_ORDER = ["SB", "BB", "UTG", "UTG1", "UTG2", "LJ", "HJ", "CO", "BTN"];
+
+/**
+ * 플랍에서 콜러가 먼저 치는가. 블라인드 콜러는 대개 오프너보다 앞서지만, SB가 열고
+ * BB가 받은 팟은 SB가 먼저 친다. 예전에는 "콜러가 블라인드면 OOP"로 정해 SB 구간을
+ * BB가 먼저 치는 트리로 풀었고, 앱은 SB를 먼저 치게 두니 두 사람의 레인지가 뒤바뀐
+ * 채로 판이 진행됐다(상대 핸드 절반 이상이 레인지 밖이라 판이 끊겼다).
+ */
+function callerIsOop(caller: string, opener: string): boolean {
+  return POSTFLOP_ORDER.indexOf(caller) < POSTFLOP_ORDER.indexOf(opener);
 }
 
 /**
@@ -185,7 +195,7 @@ for (const bucket of BUCKETS) {
   }
   const openStr = rangeString(openRange, seatsData.hands);
   const callStr = rangeString(callRange, seatsData.hands);
-  const [oop, ip] = callerIsOop(bucket.caller) ? [callStr, openStr] : [openStr, callStr];
+  const [oop, ip] = callerIsOop(bucket.caller, bucket.opener) ? [callStr, openStr] : [openStr, callStr];
   const { pot, stack } = flopChips(bucket.opener, bucket.caller);
   const dir = `${OUT_ROOT}/${bucket.name}`;
   mkdirSync(dir, { recursive: true });
@@ -207,7 +217,7 @@ for (const bucket of BUCKETS) {
         "--flop", flop,
         "--runouts", runouts.join(","),
         "--outdir", dir,
-        "--tag", bucket.name,
+        "--tag", bucket.tag ?? bucket.name,
         "--pot", String(pot),
         "--stack", String(stack),
         "--floor", FLOOR,

@@ -47,7 +47,15 @@ const BUCKETS: { name: string; opener: string; caller: string }[] = [
   { name: "middle", opener: "HJ", caller: "BB" },
   { name: "late", opener: "BTN", caller: "BB" },
   { name: "sb", opener: "SB", caller: "BB" },
-];
+].filter((b) => !process.env.ONLY || process.env.ONLY.split(",").includes(b.name));
+
+/**
+ * 플랍에서 오프너가 먼저 치는가. SB가 열고 BB가 받은 팟만 그렇다. 예전에는 모든
+ * 구간을 "콜러가 OOP"로 풀어 SB 오프너가 IP의 몫을 가져갔다(SB 오픈 과대평가).
+ * 표는 늘 [콜러, 오프너] 순서로 적는다 — 솔버가 그렇게 읽는다.
+ */
+const openerActsFirst = (b: { opener: string; caller: string }) =>
+  b.opener === "SB" && b.caller === "BB";
 
 type Seats = {
   hands: string[];
@@ -112,8 +120,10 @@ for (const bucket of BUCKETS) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/index.json`, JSON.stringify({ flops: sample }, null, 1));
 
-  const ip = rangeString(openRange, seatsData.hands);
-  const oop = rangeString(callRange, seatsData.hands);
+  const openStr = rangeString(openRange, seatsData.hands);
+  const callStr = rangeString(callRange, seatsData.hands);
+  const swap = openerActsFirst(bucket);
+  const [oop, ip] = swap ? [openStr, callStr] : [callStr, openStr];
 
   const started = Date.now();
   let reused = 0;
@@ -152,12 +162,26 @@ for (const bucket of BUCKETS) {
     ["--experimental-strip-types", "scripts/build-preflop-values.ts"],
     { stdio: "inherit", env: { ...process.env, FLOPEV_DIR: dir, FLOPEV_OUT: withDepth(`src/data/flopev-${bucket.name}.json`) } },
   );
+  if (swap) {
+    // 솔버의 플레이어 0은 먼저 치는 쪽(오프너)이다. 표는 [콜러, 오프너]로 바꿔 적는다.
+    const path = withDepth(`src/data/flopev-${bucket.name}.json`);
+    const t = JSON.parse(readFileSync(path, "utf8")) as { flopEvBb: [unknown, unknown]; openerActsFirst?: boolean };
+    t.flopEvBb = [t.flopEvBb[1], t.flopEvBb[0]];
+    t.openerActsFirst = true;
+    writeFileSync(path, JSON.stringify(t));
+  }
   setStatus(
     `${bucket.name} 완료`,
     `${((Date.now() - started) / 60000).toFixed(1)}분${reused ? ` · ${reused}개 재사용` : ""}`,
   );
 }
 
+// 30bb는 새 솔버(solve-preflop-3bet.ts, pipeline-threebet.ts)가 푼다. 여기서 옛
+// 솔버를 돌리면 그 결과를 덮어쓰므로, 표만 새로 만들 때는 SKIP_SOLVE=1로 끈다.
+if (process.env.SKIP_SOLVE === "1") {
+  setStatus("완료", "구간별 플랍 EV만(SKIP_SOLVE)");
+  process.exit(0);
+}
 setStatus("자리별 프리플랍 재솔브");
 execFileSync("node", ["--experimental-strip-types", "scripts/solve-preflop-seats.ts"], {
   stdio: "inherit",

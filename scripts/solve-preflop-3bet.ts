@@ -131,8 +131,9 @@ for (const name of new Set(Object.values(BUCKET_OF))) {
 /**
  * 오프너 o의 오픈에 k가 콜했을 때 쓸 표와, 그 표에서 콜러가 OOP(0번)인지.
  * 블라인드 콜러는 오프너보다 먼저 치고, 그 밖의 콜러는 뒤에서 친다. SB 콜러
- * 표는 SB를 OOP로 풀었다. BB 콜러 표는 BB를 OOP로 풀었다(SB 오픈도 그렇게
- * 풀려 있다 — 실제로는 SB가 먼저 친다. 알려진 근사다).
+ * 표는 SB를 OOP로 풀었다. BB 콜러 표는 [콜러, 오프너] 순서로 적혀 있다 — SB
+ * 오픈 구간은 SB를 먼저 치게 풀고 표만 그 순서로 바꿔 적었다(pipeline-buckets.ts).
+ * 그 전 표는 SB 오픈도 BB가 먼저 치게 풀려 있어 SB가 IP의 몫을 받았다.
  */
 function callTable(o: string, k: string): { table: [number[], number[]]; callerOop: boolean } {
   const bucket = BUCKET_OF[o] ?? "";

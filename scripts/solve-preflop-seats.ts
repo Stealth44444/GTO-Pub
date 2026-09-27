@@ -131,9 +131,19 @@ function freq(range: Float64Array): number {
   return s / a;
 }
 
-/** 오프너가 3벳 올인을 받았을 때의 순EV. 걸리는 건 스택 전부다. */
-function callJamEv(h: number, jamRange: Float64Array, jammerPosted: number): number {
-  const pot = 2 * STACK + (DEAD - jammerPosted);
+/**
+ * 오프너가 3벳 올인을 받았을 때의 순EV. 걸리는 건 스택 전부다.
+ *
+ * 올인한 두 사람의 블라인드는 이미 스택 안에 있으니 죽은 돈에서 둘 다 뺀다. 예전에는
+ * 올인한 쪽만 빼서, SB가 열고 BB의 3벳 올인을 받으면 팟을 0.5bb 더 셌다.
+ */
+function callJamEv(
+  h: number,
+  jamRange: Float64Array,
+  jammerPosted: number,
+  heroPosted: number,
+): number {
+  const pot = 2 * STACK + (DEAD - jammerPosted - heroPosted);
   return equityVsRange(h, jamRange) * pot - STACK;
 }
 
@@ -226,7 +236,7 @@ function solveSeat(heroIdx: number): SeatResult {
         }
         if (firstJam[k] > 0) {
           // 3벳 올인을 맞았다. 그 자리에 대한 내 콜 판단을 따른다.
-          const ev = callJamEv(h, vJam[k], posted(behind[k]));
+          const ev = callJamEv(h, vJam[k], posted(behind[k]), heroPosted);
           evOpen += firstJam[k] * Math.max(ev, -OPEN);
         }
       }
@@ -236,7 +246,7 @@ function solveSeat(heroIdx: number): SeatResult {
       for (let k = 0; k < behind.length; k++) {
         if (firstJamCall[k] === 0) continue;
         const pot = 2 * STACK + (DEAD - heroPosted - posted(behind[k]));
-        evJam += firstJamCall[k] * (equityVsRange(h, vJamCall[k]) * pot - (STACK - heroPosted));
+        evJam += firstJamCall[k] * (equityVsRange(h, vJamCall[k]) * pot - STACK);
       }
 
       const evFold = -heroPosted;
@@ -249,7 +259,7 @@ function solveSeat(heroIdx: number): SeatResult {
       // 하나로 뭉치면 앞쪽 자리의 타이트한 3벳이 평균을 끌어내려, 맨 뒤 자리의
       // 넓은 3벳까지 덩달아 접게 된다. 그 틈으로 BB가 82% 3벳하는 답이 나왔다.
       for (let k = 0; k < behind.length; k++) {
-        nCJam[k][h] = callJamEv(h, vJam[k], posted(behind[k])) > -OPEN ? 1 : 0;
+        nCJam[k][h] = callJamEv(h, vJam[k], posted(behind[k]), heroPosted) > -OPEN ? 1 : 0;
       }
     }
 
@@ -271,8 +281,8 @@ function solveSeat(heroIdx: number): SeatResult {
         const v = FLOP_EV[0][j];
         const paid = OPEN + (seat === "BB" ? ANTE : 0);
         const evCall = Number.isNaN(v) ? -paid : v - paid;
-        const win = OPEN + DEAD - seatPosted;
-        const whenCalled = equityVsRange(j, openAndCall) * jamPot - (STACK - seatPosted);
+        const win = OPEN + DEAD - seatPosted - heroPosted;
+        const whenCalled = equityVsRange(j, openAndCall) * jamPot - STACK;
         const evJam3 = (1 - myCallJamFreq) * win + myCallJamFreq * whenCalled;
         const best = Math.max(evFold, evCall, evJam3);
         nVCall[k][j] = evCall === best ? 1 : 0;
@@ -280,7 +290,7 @@ function solveSeat(heroIdx: number): SeatResult {
 
         // 내 오픈 올인에 받을지
         const pot = 2 * STACK + (DEAD - seatPosted - heroPosted);
-        nVJamCall[k][j] = equityVsRange(j, openJam) * pot - (STACK - seatPosted) > evFold ? 1 : 0;
+        nVJamCall[k][j] = equityVsRange(j, openJam) * pot - STACK > evFold ? 1 : 0;
       }
     }
 
@@ -328,9 +338,9 @@ function solveSeat(heroIdx: number): SeatResult {
         evOpen += firstCall[k] * (Number.isNaN(v) ? -OPEN : v - OPEN);
       }
       if (firstJam[k] > 0) {
-        evOpen += firstJam[k] * Math.max(callJamEv(h, vJam[k], posted(behind[k])), -OPEN);
+        evOpen += firstJam[k] * Math.max(callJamEv(h, vJam[k], posted(behind[k]), heroPosted), -OPEN);
       }
-      evCallJam[k][h] = callJamEv(h, vJam[k], posted(behind[k]));
+      evCallJam[k][h] = callJamEv(h, vJam[k], posted(behind[k]), heroPosted);
     }
     evOpenArr[h] = evOpen;
 
@@ -338,7 +348,7 @@ function solveSeat(heroIdx: number): SeatResult {
     for (let k = 0; k < behind.length; k++) {
       if (firstJamCall[k] === 0) continue;
       const pot = 2 * STACK + (DEAD - heroPosted - posted(behind[k]));
-      evJam += firstJamCall[k] * (equityVsRange(h, vJamCall[k]) * pot - (STACK - heroPosted));
+      evJam += firstJamCall[k] * (equityVsRange(h, vJamCall[k]) * pot - STACK);
     }
     evOpenJamArr[h] = evJam;
   }
@@ -357,10 +367,10 @@ function solveSeat(heroIdx: number): SeatResult {
       const v = FLOP_EV[0][j];
       const paid = OPEN + (seat === "BB" ? ANTE : 0);
       evVsCall[k][j] = Number.isNaN(v) ? -paid : v - paid;
-      const win = OPEN + DEAD - seatPosted;
-      const whenCalled = equityVsRange(j, openAndCall) * jamPot - (STACK - seatPosted);
+      const win = OPEN + DEAD - seatPosted - heroPosted;
+      const whenCalled = equityVsRange(j, openAndCall) * jamPot - STACK;
       evVsJam[k][j] = (1 - myCallJamFreq) * win + myCallJamFreq * whenCalled;
-      evVsJamCall[k][j] = equityVsRange(j, openJam) * jamPot - (STACK - seatPosted);
+      evVsJamCall[k][j] = equityVsRange(j, openJam) * jamPot - STACK;
     }
   }
 
