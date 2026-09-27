@@ -21,7 +21,7 @@ const HAND_SEATS = seatNames(9);
  * 전용이다 — 지금 고른 것, 지금 차례, 이만큼 손해.
  */
 /** 메인 게임을 위에 둔다. 나머지는 MODES 순서 그대로. */
-const MODE_ORDER = (id: ModeId) => (id === "hand" ? 0 : id === "run" ? 1 : 2);
+const MODE_ORDER = (id: ModeId) => (id === "hand" ? 0 : id === "drill" ? 1 : id === "run" ? 2 : 3);
 
 const MODE_ICON: Record<ModeId, React.ReactNode> = {
   pushfold: (
@@ -56,6 +56,12 @@ const MODE_ICON: Record<ModeId, React.ReactNode> = {
     </>
   ),
   // 트로피 — 한 판이 아니라 한 경기를 끝까지 간다.
+  drill: (
+    <>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 7.5v4.5l3 2" />
+    </>
+  ),
   run: (
     <>
       <path d="M7.5 4.5h9v4.5a4.5 4.5 0 0 1-9 0z" />
