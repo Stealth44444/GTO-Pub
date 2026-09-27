@@ -12,6 +12,7 @@ import StatsPanel from "./StatsPanel";
 import HandTrainer from "./HandTrainer";
 import RunTrainer from "./RunTrainer";
 import PreflopDrill from "./PreflopDrill";
+import DailyChallenge from "./DailyChallenge";
 import { hasSeenGuide } from "@/lib/onboarding";
 import type { Scenario } from "@/lib/scenarios";
 
@@ -53,6 +54,8 @@ export default function TrainerClient() {
           (scenario ? (
             scenario.mode === "hand" ? (
               <HandTrainer key={`hand-${scenario.seat ?? "any"}`} seat={scenario.seat} />
+            ) : scenario.mode === "daily" ? (
+              <DailyChallenge />
             ) : scenario.mode === "drill" ? (
               <PreflopDrill />
             ) : scenario.mode === "run" ? (

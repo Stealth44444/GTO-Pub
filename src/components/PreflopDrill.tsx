@@ -1,24 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FULL_DATA, loadDepthData } from "@/lib/depthLoader";
 import { PUSHFOLD_DEPTHS } from "@/lib/depthData";
-import {
-  actionsAt,
-  canOpen,
-  canThreeBet,
-  evAt,
-  labelFor,
-  rangesAt,
-  recordKind,
-  stageLine,
-  type SeatAction,
-  type SeatsData,
-} from "@/lib/seatGame";
-import { makeDecision, type Decision } from "@/lib/decisions";
-import { fromRanges } from "@/lib/rangeGrid";
-import { dealCombo } from "@/lib/preflopGame";
-import { describeStage } from "@/lib/review";
+import type { SeatAction, SeatsData } from "@/lib/seatGame";
+import type { Decision } from "@/lib/decisions";
 import {
   DRILL_LABEL,
   drillKinds,
@@ -28,19 +14,8 @@ import {
   type DrillKind,
 } from "@/lib/drill";
 import { isCleanChoice } from "@/lib/grading";
-import { ensureGuestUser, logReview } from "@/lib/attempts";
-import { currentUserId } from "@/lib/session";
-import {
-  acceptSituation,
-  currentSkills,
-  noteLoss,
-  situationKey,
-} from "@/lib/adaptive";
-import Card from "./Card";
-import DecisionRows from "./DecisionRows";
-import GradeIcon from "./GradeIcon";
-import RangeGrid from "./RangeGrid";
-import WhyJam from "./WhyJam";
+import { acceptSituation, currentSkills, situationKey } from "@/lib/adaptive";
+import DrillCard, { decide, recordDrill } from "./DrillCard";
 
 /**
  * 고를 수 있는 깊이. 푸시폴드 깊이는 첫 진입·올인 대응만, 20bb는 오픈 대응까지,
@@ -70,8 +45,6 @@ const draw = (
     hard,
   );
 
-type Suit = "s" | "h" | "d" | "c";
-
 /**
  * 프리플랍 드릴. 한 상황을 골라 경계선 스팟만 연달아 푼다(lib/drill.ts).
  *
@@ -91,11 +64,6 @@ export default function PreflopDrill() {
   );
   const [decision, setDecision] = useState<Decision | null>(null);
   const [stats, setStats] = useState({ n: 0, clean: 0, streak: 0, best: 0 });
-
-  const cards = useMemo(() => {
-    if (!drill) return null;
-    return dealCombo(drill.hand, new Set(), Math.random);
-  }, [drill]);
 
   const restart = (k: DrillKind, s: string | null, data = DATA, h = hard) => {
     setKind(k);
@@ -122,33 +90,11 @@ export default function PreflopDrill() {
       .finally(() => setLoading(null));
   };
 
-  const actions = drill
-    ? actionsAt(drill.stage, canOpen(DATA), canThreeBet(DATA))
-    : [];
-  const labels = drill ? actions.map((a) => labelFor(DATA, a, drill.seat)) : [];
-
   const choose = (a: SeatAction) => {
     if (decision || !drill) return;
-    const ev = evAt(DATA, drill.seat, drill.stage, drill.hand);
-    const view = fromRanges(
-      DATA.hands,
-      labels,
-      actions.map(recordKind),
-      rangesAt(DATA, drill.seat, drill.stage, actions),
-      drill.hand,
-    );
-    const d = makeDecision(
-      "PREFLOP",
-      labels,
-      ev,
-      actions.indexOf(a),
-      actions.map(recordKind),
-      [],
-      view,
-    );
+    const d = decide(DATA, drill, a);
     setDecision(d);
-    if (d.lossBb !== null)
-      noteLoss(situationKey(drill.seat, drill.stage), d.lossBb);
+    recordDrill(DATA, drill, d);
     const clean = d.grade ? isCleanChoice(d.grade) : true;
     setStats((s) => {
       const streak = clean ? s.streak + 1 : 0;
@@ -159,26 +105,6 @@ export default function PreflopDrill() {
         best: Math.max(s.best, streak),
       };
     });
-    // 드릴은 복습과 같은 기록으로 남긴다. 맞히면 복습 목록에서 그 스팟이 내려가고,
-    // 실제로 친 판의 통계에는 섞이지 않는다.
-    const userId = currentUserId();
-    if (userId) {
-      void ensureGuestUser(userId).then(() =>
-        logReview({
-          userId,
-          tableSize: DATA.tableSize,
-          stackBb: DATA.stackBb,
-          anteBb: DATA.anteBb,
-          position: drill.seat,
-          handCode: drill.hand,
-          street: "preflop",
-          userAction: d.chosenKind,
-          correctAction: d.bestKind,
-          evLossBb: d.lossBb,
-          nodeLine: stageLine(drill.stage),
-        }),
-      );
-    }
   };
 
   const next = () => {
@@ -274,104 +200,14 @@ export default function PreflopDrill() {
           이 조건으로 낼 스팟이 없습니다. 다른 상황이나 자리를 골라 주세요.
         </p>
       ) : (
-        <>
-          {/* 스팟 */}
-          <section className="mt-5 rounded-[var(--gw-radius-card)] border border-[var(--gw-border)] bg-[var(--gw-surface-1)] px-4 py-4">
-            <div className="flex items-baseline justify-between">
-              <span className="gw-num text-[13px] font-semibold text-[var(--gw-accent)]">
-                {drill.seat} · {DATA.stackBb}bb
-              </span>
-              <span className="gw-label-ko">{DRILL_LABEL[kind]}</span>
-            </div>
-            <p className="mt-1.5 text-[14px] text-[var(--gw-text-secondary)]">
-              {describeStage(drill.stage)}
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              {cards?.map((c) => (
-                <Card
-                  key={c}
-                  rank={c[0]}
-                  suit={c[1] as Suit}
-                  className="h-[84px] w-[60px]"
-                />
-              ))}
-            </div>
-            <p className="gw-num mt-2 text-center text-[12px] text-[var(--gw-text-muted)]">
-              {drill.hand}
-            </p>
-          </section>
-
-          {/* 선택 */}
-          {!decision && (
-            <div
-              className="mt-4 grid gap-2.5"
-              style={{
-                gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))`,
-              }}
-            >
-              {actions.map((a, i) => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => choose(a)}
-                  className={`rounded-[var(--gw-radius-control)] py-4 text-[15px] font-bold transition active:scale-95 ${
-                    a === "fold"
-                      ? "bg-[var(--gw-danger)] text-[var(--gw-text-primary)]"
-                      : a === "call"
-                        ? "bg-[var(--gw-accent)] text-[var(--gw-ink)]"
-                        : "bg-[var(--gw-accent-strong)] text-[var(--gw-text-primary)]"
-                  }`}
-                >
-                  {labels[i]}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* 결과 */}
-          {decision && (
-            <section className="mt-4">
-              {decision.grade && (
-                <div className="mb-3 flex items-center gap-2">
-                  <GradeIcon
-                    id={decision.grade.id}
-                    color={decision.grade.color}
-                    className="h-6 w-6"
-                  />
-                  <span
-                    className="text-[20px] font-bold"
-                    style={{ color: decision.grade.color }}
-                  >
-                    {decision.grade.label}
-                  </span>
-                </div>
-              )}
-              <DecisionRows rows={decision.rows} chosen={decision.chosen} />
-              {drill.stage.kind === "vsJam" && (
-                <WhyJam
-                  heroSeat={drill.seat}
-                  jammer={drill.stage.jammer}
-                  iOpened={drill.stage.iOpened}
-                  handCode={drill.hand}
-                  data={DATA}
-                />
-              )}
-              <button
-                type="button"
-                onClick={next}
-                className="mt-4 w-full rounded-[var(--gw-radius-control)] bg-[var(--gw-accent)] py-4 text-[16px] font-bold text-[var(--gw-ink)] transition active:scale-[0.98]"
-              >
-                다음 스팟
-              </button>
-              {/* 격자는 버튼 아래에 둔다. 다음 스팟으로 가는 데 스크롤이 필요 없어야 한다. */}
-              {decision.range && (
-                <div className="mt-5">
-                  <RangeGrid view={decision.range} />
-                </div>
-              )}
-            </section>
-          )}
-        </>
+        <DrillCard
+          data={DATA}
+          drill={drill}
+          kindLabel={DRILL_LABEL[kind]}
+          decision={decision}
+          onChoose={choose}
+          onNext={next}
+        />
       )}
     </div>
   );
