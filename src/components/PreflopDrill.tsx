@@ -40,6 +40,7 @@ import Card from "./Card";
 import DecisionRows from "./DecisionRows";
 import GradeIcon from "./GradeIcon";
 import RangeGrid from "./RangeGrid";
+import WhyJam from "./WhyJam";
 
 /**
  * 고를 수 있는 깊이. 푸시폴드 깊이는 첫 진입·올인 대응만, 20bb는 오픈 대응까지,
@@ -321,6 +322,15 @@ export default function PreflopDrill() {
                 </div>
               )}
               <DecisionRows rows={decision.rows} chosen={decision.chosen} />
+              {drill.stage.kind === "vsJam" && (
+                <WhyJam
+                  heroSeat={drill.seat}
+                  jammer={drill.stage.jammer}
+                  iOpened={drill.stage.iOpened}
+                  handCode={drill.hand}
+                  data={DATA}
+                />
+              )}
               <button
                 type="button"
                 onClick={next}
