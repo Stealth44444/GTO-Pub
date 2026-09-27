@@ -220,6 +220,13 @@ type Strategy = {
   oJam4: Float64Array[];
   /** k가 오프너의 4벳에 콜. */
   kCall4: Float64Array[];
+  /**
+   * 플랫 뒤 스퀴즈. [k = 플랫한 자리][m = k 뒤의 자리 순번(behind.slice(k + 1))].
+   * m의 스퀴즈 올인, 오프너의 콜, (오프너가 접은 뒤) k의 콜.
+   */
+  sq: Float64Array[][];
+  oSq: Float64Array[][];
+  kSq: Float64Array[][];
 };
 
 type Values = {
@@ -233,6 +240,12 @@ type Values = {
   vsJam: Float64Array[];
   vsJamCall: Float64Array[];
   call4: Float64Array[];
+  /** k가 플랫했을 때 오프너의 가치(스퀴즈를 맞을 수 있다). */
+  flatOpener: Float64Array[];
+  /** [k][m]: m의 스퀴즈 EV, 오프너의 스퀴즈 콜 EV, k의 스퀴즈 콜 EV. */
+  sqEv: Float64Array[][];
+  oSqCall: Float64Array[][];
+  kSqCall: Float64Array[][];
 };
 
 /**
@@ -281,6 +294,10 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     vsJam: [],
     vsJamCall: [],
     call4: [],
+    flatOpener: [],
+    sqEv: [],
+    oSqCall: [],
+    kSqCall: [],
   };
 
   for (let k = 0; k < nK; k++) {
@@ -334,10 +351,78 @@ function values(hero: string, behind: string[], s: Strategy): Values {
     const vsJamCall = new Float64Array(N);
     const call4 = new Float64Array(N);
     const paid = OPEN + (seat === "BB" ? ANTE : 0);
+
+    // ── 플랫 뒤 스퀴즈 ──────────────────────────────────────────────────
+    // k 뒤의 자리 m이 차례로 스퀴즈 올인할 수 있다. 오프너가 먼저 답하고, 접으면
+    // k가 답한다. 콜은 한 명까지. 이게 없으면 플랫이 블라인드·앤티를 공짜로
+    // 먹어 뒷자리 플랫이 49%까지 넓어진다(2026-09-27).
+    const after = behind.slice(k + 1);
+    const flatFreq = freq(s.vCall[k]);
+    let noSq = 1;
+    const firstSq: number[] = [];
+    const pO: number[] = [];
+    const sqEv: Float64Array[] = [];
+    const oSqCall: Float64Array[] = [];
+    const kSqCall: Float64Array[] = [];
+    for (let mi = 0; mi < after.length; mi++) {
+      const m = after[mi];
+      const f = freq(s.sq[k][mi]);
+      firstSq.push(noSq * f);
+      noSq *= 1 - f;
+      // 셋 말고 판에 남은 죽은 돈
+      const r3 = DEAD - posted(hero) - posted(seat) - posted(m);
+      const potO = 2 * STACK + paid + r3; // 오프너가 콜: 플랫한 k의 돈은 죽는다
+      const potK = 2 * STACK + OPEN + r3; // k가 콜: 오프너의 오픈액은 죽는다
+      const eqVsSq = equityVector(s.sq[k][mi]);
+      const oc = new Float64Array(N);
+      const kc = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        oc[i] = eqVsSq[i] * potO - STACK;
+        kc[i] = eqVsSq[i] * potK - STACK;
+      }
+      oSqCall.push(oc);
+      kSqCall.push(kc);
+
+      // 스퀴즈한 쪽. 대응 비율은 "열었다 / 플랫했다는 조건 아래".
+      const openCallSq = times(s.open, s.oSq[k][mi]);
+      const po = openFreq > 0 ? freq(openCallSq) / openFreq : 0;
+      const flatCallSq = times(s.vCall[k], s.kSq[k][mi]);
+      const pk = flatFreq > 0 ? freq(flatCallSq) / flatFreq : 0;
+      pO.push(po);
+      const eqVsOC = equityVector(openCallSq);
+      const eqVsKC = equityVector(flatCallSq);
+      const winAll = OPEN + paid + r3;
+      const se = new Float64Array(N);
+      for (let x = 0; x < N; x++) {
+        se[x] =
+          (1 - po) * (1 - pk) * winAll +
+          po * (eqVsOC[x] * potO - STACK) +
+          (1 - po) * pk * (eqVsKC[x] * potK - STACK);
+      }
+      sqEv.push(se);
+    }
+    v.sqEv.push(sqEv);
+    v.oSqCall.push(oSqCall);
+    v.kSqCall.push(kSqCall);
+
+    const ct = callTables[k];
+    const flatOpener = new Float64Array(N);
+    for (let h = 0; h < N; h++) {
+      const fv = ct.table[ct.callerOop ? 1 : 0][h];
+      let e = noSq * (Number.isNaN(fv) ? -OPEN : fv - OPEN);
+      for (let mi = 0; mi < after.length; mi++) e += firstSq[mi] * Math.max(-OPEN, oSqCall[mi][h]);
+      flatOpener[h] = e;
+    }
+    v.flatOpener.push(flatOpener);
+
     for (let j = 0; j < N; j++) {
-      const ct = callTables[k];
       const fv = ct.table[ct.callerOop ? 0 : 1][j];
-      vsCall[j] = Number.isNaN(fv) ? -paid : fv - paid;
+      let e = noSq * (Number.isNaN(fv) ? -paid : fv - paid);
+      // 오프너가 콜하면 k는 접고 낸 것을 잃는다. 오프너가 접으면 k가 고른다.
+      for (let mi = 0; mi < after.length; mi++) {
+        e += firstSq[mi] * (pO[mi] * -paid + (1 - pO[mi]) * Math.max(-paid, kSqCall[mi][j]));
+      }
+      vsCall[j] = e;
 
       // 3벳 올인: 오프너가 접으면 오픈액과 죽은 돈을 가져온다.
       vsJam[j] = (1 - pj3) * (OPEN + r) + pj3 * (eqVsOpenCallJam[j] * aPot - STACK);
@@ -369,11 +454,7 @@ function values(hero: string, behind: string[], s: Strategy): Values {
   for (let h = 0; h < N; h++) {
     let evOpen = allFold * (DEAD - heroPosted);
     for (let k = 0; k < nK; k++) {
-      if (firstCall[k] > 0) {
-        const ct = callTables[k];
-        const fv = ct.table[ct.callerOop ? 1 : 0][h];
-        evOpen += firstCall[k] * (Number.isNaN(fv) ? -OPEN : fv - OPEN);
-      }
+      if (firstCall[k] > 0) evOpen += firstCall[k] * v.flatOpener[k][h];
       if (firstJam[k] > 0) evOpen += firstJam[k] * Math.max(v.callJam[k][h], -OPEN);
       if (firstThree[k] > 0) {
         evOpen += firstThree[k] * Math.max(-OPEN, v.call3[k][h], v.jam4[k][h]);
@@ -416,6 +497,9 @@ function solveSeat(heroIdx: number): SeatResult {
     oCall3: behind.map(() => flat(0.4)),
     oJam4: behind.map(() => flat(0.1)),
     kCall4: behind.map(() => flat(0.3)),
+    sq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.05))),
+    oSq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.3))),
+    kSq: behind.map((_, k) => behind.slice(k + 1).map(() => flat(0.3))),
   };
   const heroFold = -posted(hero);
 
@@ -448,6 +532,16 @@ function solveSeat(heroIdx: number): SeatResult {
         step(s.vJamCall[k], j, v.vsJamCall[k][j] > fold ? 1 : 0);
         step(s.kCall4[k], j, v.call4[k][j] > -kInv ? 1 : 0);
       }
+      // 플랫 뒤 스퀴즈: m의 스퀴즈, 오프너의 콜, k의 콜.
+      const paid = OPEN + (seat === "BB" ? ANTE : 0);
+      behind.slice(k + 1).forEach((m, mi) => {
+        const mFold = -posted(m);
+        for (let x = 0; x < N; x++) {
+          step(s.sq[k][mi], x, v.sqEv[k][mi][x] > mFold ? 1 : 0);
+          step(s.oSq[k][mi], x, v.oSqCall[k][mi][x] > -OPEN ? 1 : 0);
+          step(s.kSq[k][mi], x, v.kSqCall[k][mi][x] > -paid ? 1 : 0);
+        }
+      });
     }
   }
   return { strategy: s, values: values(hero, behind, s), behind };
@@ -543,6 +637,14 @@ for (const [seat, r] of Object.entries(results)) {
   const { strategy: s, values: v, behind } = r;
   const per = <T,>(arr: T[], f: (x: T) => unknown) =>
     Object.fromEntries(behind.map((b, k) => [b, f(arr[k])]));
+  // [플랫한 자리][그 뒤의 자리] — 엔진의 vsFlatJam 등과 같은 모양.
+  const perFlat = <T,>(arr: T[][], f: (x: T) => unknown) =>
+    Object.fromEntries(
+      behind.map((b, k) => [
+        b,
+        Object.fromEntries(behind.slice(k + 1).map((m, mi) => [m, f(arr[k][mi])])),
+      ]),
+    );
   seatsOut[seat] = {
     open: asRange(s.open),
     openJam: asRange(s.openJam),
@@ -554,6 +656,9 @@ for (const [seat, r] of Object.entries(results)) {
     vsThreeBetCall: per(s.oCall3, asRange),
     vsThreeBetJam: per(s.oJam4, asRange),
     vsFourBetCall: per(s.kCall4, asRange),
+    vsFlatJam: perFlat(s.sq, asRange),
+    vsSqueezeOpenerCall: perFlat(s.oSq, asRange),
+    vsSqueezeCallerCall: perFlat(s.kSq, asRange),
     foldEvBb: -posted(seat),
     ev: {
       open: asEv(v.open),
@@ -566,6 +671,9 @@ for (const [seat, r] of Object.entries(results)) {
       vsThreeBetCall: per(v.call3, asEv),
       vsThreeBetJam: per(v.jam4, asEv),
       vsFourBetCall: per(v.call4, asEv),
+      vsFlatJam: perFlat(v.sqEv, asEv),
+      vsSqueezeOpenerCall: perFlat(v.oSqCall, asEv),
+      vsSqueezeCallerCall: perFlat(v.kSqCall, asEv),
     },
   };
 }
@@ -618,6 +726,20 @@ for (const [seat, r] of Object.entries(results)) {
   regretN += 1;
   console.log(
     `  ${seat.padEnd(5)}${pct(of)}${pct(freq(s.openJam))} │ ${bb} │ ${vs3} │ ${g.avg.toFixed(4)} · ${g.worst.toFixed(3)} (${g.worstAt})`,
+  );
+}
+console.log("\n플랫과 스퀴즈");
+for (const [opener, flatter] of [
+  ["UTG", "CO"],
+  ["CO", "BTN"],
+  ["BTN", "SB"],
+]) {
+  const r = results[opener];
+  const k = r.behind.indexOf(flatter);
+  const bb = r.behind.slice(k + 1).indexOf("BB");
+  console.log(
+    `  ${opener} 오픈에 ${flatter} 플랫 ${pct(freq(r.strategy.vCall[k]))}` +
+      ` · 그 뒤 BB 스퀴즈 ${bb >= 0 ? pct(freq(r.strategy.sq[k][bb])) : "  —"}`,
   );
 }
 console.log(`\n평균 후회 ${(regretSum / regretN).toFixed(4)}bb · ${((Date.now() - started) / 1000).toFixed(0)}초`);
